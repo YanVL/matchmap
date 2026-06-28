@@ -1,0 +1,38 @@
+services:
+  api:
+    build: .
+    container_name: matchmap-api
+    ports:
+      - "8080:8080"
+    env_file:
+      - .env
+    depends_on:
+      db:
+        condition: service_healthy
+    networks:
+      - matchmap-network
+
+  db:
+    image: postgis/postgis:17-3.5
+    container_name: matchmap-db
+    ports:
+      - "5432:5432"
+    env_file:
+      - .env
+    volumes:
+      - matchmap-db-data:/var/lib/postgresql/data
+      - ./migrations:/docker-entrypoint-initdb.d
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U matchmap -d matchmap"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+    networks:
+      - matchmap-network
+
+volumes:
+  matchmap-db-data:
+
+networks:
+  matchmap-network:
+    driver: bridge
