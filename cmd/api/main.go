@@ -9,6 +9,7 @@ import (
 
 	"matchmap/internal/database"
 	"matchmap/internal/location"
+	"matchmap/internal/users"
 )
 
 func main() {
@@ -23,6 +24,9 @@ func main() {
 	locationHandler := location.Handler{
 		DB: db,
 	}
+	userHandler := users.Handler{
+		DB: db,
+	}
 
 	mux := http.NewServeMux()
 
@@ -33,6 +37,7 @@ func main() {
 	})
 
 	mux.HandleFunc("POST /nearby", locationHandler.Nearby)
+	mux.HandleFunc("POST /users", userHandler.CreateUser)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {
