@@ -38,6 +38,7 @@ func main() {
 
 	mux.HandleFunc("POST /nearby", locationHandler.Nearby)
 	mux.HandleFunc("POST /users", userHandler.CreateUser)
+	mux.HandleFunc("PUT /users/{id}/location", locationHandler.UpdateLocation)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {
