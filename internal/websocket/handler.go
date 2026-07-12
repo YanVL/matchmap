@@ -1,9 +1,7 @@
 package websocket
 
 import (
-	// "context"
 	"net/http"
-	// "time"
 	"log"
 
 	"github.com/coder/websocket"
