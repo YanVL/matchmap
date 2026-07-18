@@ -28,7 +28,10 @@ func main() {
 	userHandler := users.Handler{
 		DB: db,
 	}
-	wsHandler := websocket.Handler{}
+	hub := websocket.NewHub()
+	wsHandler := websocket.Handler{
+		Hub: hub,
+	}
 
 	mux := http.NewServeMux()
 
