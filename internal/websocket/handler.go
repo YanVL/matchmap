@@ -3,8 +3,10 @@ package websocket
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/coder/websocket"
+	"github.com/coder/websocket/wsjson"
 )
 
 type Handler struct {
@@ -33,6 +35,17 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 		len(h.Hub.Clients),
 		conn,
 	)
+
+	msgWelcome := Message{
+		User:    "System",
+		Content: "Welcome to the chat!",
+		SentAt:  time.Now(),
+	}
+
+	err = wsjson.Write(r.Context(), client.Conn, msgWelcome)
+	if err != nil {
+		log.Printf("failed to send welcome message: %v", err)
+	}
 
 	for {
 		_, _, err := conn.Read(r.Context())
