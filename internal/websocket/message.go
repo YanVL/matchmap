@@ -9,3 +9,7 @@ type Message struct {
 	Content string    `json:"content"`
 	SentAt  time.Time `json:"sent_at"`
 }
+
+type ChatMessage struct {
+	Content string `json:"content"`
+}

@@ -1,6 +1,7 @@
 package websocket
 
 import (
+	"encoding/json"
 	"log"
 	"net/http"
 	"time"
@@ -48,11 +49,25 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for {
-		_, _, err := conn.Read(r.Context())
+		var event Event
+
+		err := wsjson.Read(r.Context(), conn, &event)
 		if err != nil {
-			log.Printf("client connection ended: user_id=%s error=%v", client.UserID, err)
-			h.Hub.Unregister(client)
+			log.Printf("failed to read event: %v", err)
 			break
 		}
+
+		switch event.Type {
+		case "chat_message":
+			var chatMessage ChatMessage
+
+			err := json.Unmarshal(event.Payload, &chatMessage)
+			if err != nil {
+				log.Printf("failed to unmarshal message: %v", err)
+			}
+
+			log.Printf("chat message: %+v", chatMessage)
+		}
+
 	}
 }
