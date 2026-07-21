@@ -6,5 +6,6 @@ import (
 
 type Client struct {
 	UserID string
+	UserName string
 	Conn   *websocket.Conn
 }

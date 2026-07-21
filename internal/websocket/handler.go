@@ -24,11 +24,12 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	defer conn.CloseNow()
 
 	client := &Client{
-		UserID: "b34ac619-afe7-4321-a672-0366d9cec18b",
+		UserID: r.URL.Query().Get("user"),
 		Conn:   conn,
 	}
 
 	h.Hub.Register(client)
+	defer h.Hub.Unregister(client)
 
 	log.Printf(
 		"client connected: user_id=%s active_clients=%d connection=%p",
@@ -66,7 +67,15 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 				log.Printf("failed to unmarshal message: %v", err)
 			}
 
-			log.Printf("chat message: %+v", chatMessage)
+			msg := Message{
+				User:    client.UserID,
+				Content: chatMessage.Content,
+				SentAt:  time.Now(),
+			}
+
+			h.Hub.Broadcast(r.Context(), msg)
+		default:
+			log.Printf("unknown event type: %s", event.Type)
 		}
 
 	}
