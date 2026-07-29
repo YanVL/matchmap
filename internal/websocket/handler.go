@@ -53,7 +53,7 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	}
 
 	go func() {
-		ticker := time.NewTicker(5 * time.Second)
+		ticker := time.NewTicker(20 * time.Second)
 		defer ticker.Stop()
 
 		for {
