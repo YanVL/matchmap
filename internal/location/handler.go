@@ -17,6 +17,11 @@ type NearbyRequest struct {
 	Radius    int     `json:"radius"`
 }
 
+type UpdateLocationRequest struct {
+	Latitude  float64 `json:"latitude"`
+	Longitude float64 `json:"longitude"`
+}
+
 func (h Handler) Nearby(w http.ResponseWriter, r *http.Request) {
 	var input NearbyRequest
 
@@ -60,4 +65,39 @@ func (h Handler) Nearby(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(users)
+}
+
+func (h Handler) UpdateLocation(w http.ResponseWriter, r *http.Request) {
+	var input UpdateLocationRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+		http.Error(w, "invalid json", http.StatusBadRequest)
+		return
+	}
+
+	userID := r.PathValue("id")
+
+	_, err := h.DB.Exec(
+		r.Context(),
+		`
+		INSERT INTO user_locations (user_id, location, updated_at)
+		VALUES (
+			$3,
+			ST_SetSRID(ST_MakePoint($1, $2), 4326)::geography,
+			NOW()
+		)
+		ON CONFLICT (user_id) DO UPDATE SET
+			location = EXCLUDED.location,
+			updated_at = NOW()
+		`,
+		input.Longitude,
+		input.Latitude,
+		userID,
+	)
+	if err != nil {
+		http.Error(w, "database error", http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
 }

@@ -1,0 +1,13 @@
+root = "."
+tmp_dir = "tmp"
+
+[build]
+cmd = "go build -o ./tmp/matchmap-api ./cmd/api"
+bin = "./tmp/matchmap-api"
+include_ext = ["go", "tpl", "tmpl", "html"]
+exclude_dir = ["tmp", "vendor", ".git"]
+delay = 1000
+stop_on_error = true
+
+[log]
+time = true

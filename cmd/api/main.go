@@ -9,6 +9,8 @@ import (
 
 	"matchmap/internal/database"
 	"matchmap/internal/location"
+	"matchmap/internal/users"
+	"matchmap/internal/websocket"
 )
 
 func main() {
@@ -23,6 +25,13 @@ func main() {
 	locationHandler := location.Handler{
 		DB: db,
 	}
+	userHandler := users.Handler{
+		DB: db,
+	}
+	hub := websocket.NewHub()
+	wsHandler := websocket.Handler{
+		Hub: hub,
+	}
 
 	mux := http.NewServeMux()
 
@@ -32,7 +41,10 @@ func main() {
 		})
 	})
 
+	mux.HandleFunc("POST /users", userHandler.CreateUser)
+	mux.HandleFunc("PUT /users/{id}/location", locationHandler.UpdateLocation)
 	mux.HandleFunc("POST /nearby", locationHandler.Nearby)
+	mux.HandleFunc("GET /ws", wsHandler.Connect)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {
