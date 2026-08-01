@@ -103,6 +103,29 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 			}
 
 			h.Hub.Broadcast(ctx, msg)
+		case "location_update":
+
+			var locationUpdate LocationUpdate
+
+			err := json.Unmarshal(event.Payload, &locationUpdate)
+			if err != nil {
+				log.Printf("failed to unmarshal location update: %v", err)
+				continue
+			}
+
+			client.Location = Coordinates{
+				Latitude:  locationUpdate.Latitude,
+				Longitude: locationUpdate.Longitude,
+			}
+
+			log.Printf(
+				"received location update: user_id=%s latitude=%f longitude=%f",
+				client.UserID,
+				locationUpdate.Latitude,
+				locationUpdate.Longitude,
+			)
+
+			// h.Hub.UpdateClientLocation(client)
 		default:
 			log.Printf("unknown event type: %s", event.Type)
 		}

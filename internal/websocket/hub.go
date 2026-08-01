@@ -36,3 +36,4 @@ func (h *Hub) Broadcast(ctx context.Context, message Message) {
         }
     }
 }
+
