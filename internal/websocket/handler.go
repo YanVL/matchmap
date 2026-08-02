@@ -15,43 +15,8 @@ type Handler struct {
 	Hub *Hub
 }
 
-func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
-	conn, err := websocket.Accept(w, r, nil)
-	if err != nil {
-		log.Printf("failed to accept websocket connection: %v", err)
-		return
-	}
-
-	ctx, cancel := context.WithCancel(r.Context())
-	defer conn.CloseNow()
-	defer cancel()
-
-	client := &Client{
-		UserID: r.URL.Query().Get("user"),
-		Conn:   conn,
-	}
-
-	h.Hub.Register(client)
-	defer h.Hub.Unregister(client)
-
-	log.Printf(
-		"client connected: user_id=%s active_clients=%d connection=%p",
-		client.UserID,
-		len(h.Hub.Clients),
-		conn,
-	)
-
-	msgWelcome := Message{
-		User:    "System",
-		Content: "Welcome to the chat!",
-		SentAt:  time.Now(),
-	}
-
-	err = wsjson.Write(ctx, client.Conn, msgWelcome)
-	if err != nil {
-		log.Printf("failed to send welcome message: %v", err)
-	}
-
+// Start background tasks
+func (h Handler) startHeartbeat(ctx context.Context, cancel context.CancelFunc, client *Client) {
 	go func() {
 		ticker := time.NewTicker(20 * time.Second)
 		defer ticker.Stop()
@@ -59,7 +24,7 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 		for {
 			select {
 			case <-ticker.C:
-				err := conn.Ping(ctx)
+				err := client.Conn.Ping(ctx)
 				if err != nil {
 					log.Printf("failed to send ping: %v", err)
 					cancel()
@@ -69,17 +34,20 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 				log.Printf(
 					"heartbeat stopped: user_id=%s connection=%p",
 					client.UserID,
-					conn,
+					client.Conn,
 				)
 				return
 			}
 		}
 	}()
+}
 
+// Process incoming events
+func (h *Handler) readLoop(ctx context.Context, cancel context.CancelFunc, client *Client) {
 	for {
 		var event Event
 
-		err := wsjson.Read(ctx, conn, &event)
+		err := wsjson.Read(ctx, client.Conn, &event)
 		if err != nil {
 			log.Printf("failed to read event: %v", err)
 			cancel()
@@ -124,11 +92,51 @@ func (h Handler) Connect(w http.ResponseWriter, r *http.Request) {
 				locationUpdate.Latitude,
 				locationUpdate.Longitude,
 			)
-
-			// h.Hub.UpdateClientLocation(client)
 		default:
 			log.Printf("unknown event type: %s", event.Type)
 		}
 	}
+}
+
+func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
+	conn, err := websocket.Accept(w, r, nil)
+	if err != nil {
+		log.Printf("failed to accept websocket connection: %v", err)
+		return
+	}
+
+	ctx, cancel := context.WithCancel(r.Context())
+	defer conn.CloseNow()
+	defer cancel()
+
+	client := &Client{
+		UserID: r.URL.Query().Get("user"),
+		Conn:   conn,
+	}
+
+	h.Hub.Register(client)
+	defer h.Hub.Unregister(client)
+
+	log.Printf(
+		"client connected: user_id=%s active_clients=%d connection=%p",
+		client.UserID,
+		len(h.Hub.Clients),
+		conn,
+	)
+
+	msgWelcome := Message{
+		User:    "System",
+		Content: "Welcome to the chat!",
+		SentAt:  time.Now(),
+	}
+
+	err = wsjson.Write(ctx, client.Conn, msgWelcome)
+	if err != nil {
+		log.Printf("failed to send welcome message: %v", err)
+	}
+
+	h.startHeartbeat(ctx, cancel, client)
+
+	h.readLoop(ctx, cancel, client)
 
 }

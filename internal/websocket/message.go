@@ -13,3 +13,4 @@ type Message struct {
 type ChatMessage struct {
 	Content string `json:"content"`
 }
+
