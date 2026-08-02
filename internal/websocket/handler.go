@@ -9,10 +9,12 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"matchmap/internal/location"
 )
 
 type Handler struct {
 	Hub *Hub
+    LocationService *location.Service
 }
 
 // Handle chat message events
@@ -35,7 +37,7 @@ func (h *Handler) handleChatMessage(ctx context.Context, client *Client, event E
 }
 
 // Handle location update events
-func (h *Handler) handleLocationUpdate(client *Client, event Event) {
+func (h *Handler) handleLocationUpdate(ctx context.Context, client *Client, event Event) {
 	var locationUpdate LocationUpdate
 
 	err := json.Unmarshal(event.Payload, &locationUpdate)
@@ -47,6 +49,12 @@ func (h *Handler) handleLocationUpdate(client *Client, event Event) {
 	client.Location = Coordinates{
 		Latitude:  locationUpdate.Latitude,
 		Longitude: locationUpdate.Longitude,
+	}
+
+	err = h.LocationService.UpdateLocation(ctx, client.UserID, locationUpdate.Latitude, locationUpdate.Longitude)
+	if err != nil {
+		log.Printf("failed to update location in database: %v", err)
+		return
 	}
 
 	log.Printf(
@@ -63,7 +71,7 @@ func (h *Handler) dispatchEvent(ctx context.Context, client *Client, event Event
 	case "chat_message":
 		h.handleChatMessage(ctx, client, event)
 	case "location_update":
-		h.handleLocationUpdate(client, event)
+		h.handleLocationUpdate(ctx, client, event)
 	default:
 		log.Printf("unknown event type: %s", event.Type)
 	}

@@ -38,6 +38,7 @@ func main() {
 	hub := websocket.NewHub()
 	wsHandler := websocket.Handler{
 		Hub: hub,
+		LocationService: &locationService,
 	}
 
 	mux := http.NewServeMux()
