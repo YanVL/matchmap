@@ -22,9 +22,16 @@ func main() {
 	}
 	defer db.Close()
 
-	locationHandler := location.Handler{
+	locationRepo := location.Repository{
 		DB: db,
 	}
+	locationService := location.Service{
+		Repository: &locationRepo,
+	}
+	locationHandler := location.Handler{
+		Service: &locationService,
+	}
+
 	userHandler := users.Handler{
 		DB: db,
 	}
