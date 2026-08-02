@@ -15,45 +15,55 @@ type Handler struct {
 	Hub *Hub
 }
 
+// Handle chat message events
+func (h *Handler) handleChatMessage(ctx context.Context, client *Client, event Event) {
+	var chatMessage ChatMessage
+
+	err := json.Unmarshal(event.Payload, &chatMessage)
+	if err != nil {
+		log.Printf("failed to unmarshal message: %v", err)
+		return
+	}
+
+	msg := Message{
+		User:    client.UserID,
+		Content: chatMessage.Content,
+		SentAt:  time.Now(),
+	}
+
+	h.Hub.Broadcast(ctx, msg)
+}
+
+// Handle location update events
+func (h *Handler) handleLocationUpdate(client *Client, event Event) {
+	var locationUpdate LocationUpdate
+
+	err := json.Unmarshal(event.Payload, &locationUpdate)
+	if err != nil {
+		log.Printf("failed to unmarshal location update: %v", err)
+		return
+	}
+
+	client.Location = Coordinates{
+		Latitude:  locationUpdate.Latitude,
+		Longitude: locationUpdate.Longitude,
+	}
+
+	log.Printf(
+		"received location update: user_id=%s latitude=%f longitude=%f",
+		client.UserID,
+		locationUpdate.Latitude,
+		locationUpdate.Longitude,
+	)
+}
+
 // Dispatch events based on their type
 func (h *Handler) dispatchEvent(ctx context.Context, client *Client, event Event) {
 	switch event.Type {
 	case "chat_message":
-		var chatMessage ChatMessage
-
-		err := json.Unmarshal(event.Payload, &chatMessage)
-		if err != nil {
-			log.Printf("failed to unmarshal message: %v", err)
-			return
-		}
-
-		msg := Message{
-			User:    client.UserID,
-			Content: chatMessage.Content,
-			SentAt:  time.Now(),
-		}
-
-		h.Hub.Broadcast(ctx, msg)
+		h.handleChatMessage(ctx, client, event)
 	case "location_update":
-		var locationUpdate LocationUpdate
-
-		err := json.Unmarshal(event.Payload, &locationUpdate)
-		if err != nil {
-			log.Printf("failed to unmarshal location update: %v", err)
-			return
-		}
-
-		client.Location = Coordinates{
-			Latitude:  locationUpdate.Latitude,
-			Longitude: locationUpdate.Longitude,
-		}
-
-		log.Printf(
-			"received location update: user_id=%s latitude=%f longitude=%f",
-			client.UserID,
-			locationUpdate.Latitude,
-			locationUpdate.Longitude,
-		)
+		h.handleLocationUpdate(client, event)
 	default:
 		log.Printf("unknown event type: %s", event.Type)
 	}
