@@ -2,15 +2,11 @@ package websocket
 
 import (
 	"github.com/coder/websocket"
+	"matchmap/internal/location"
 )
 
 type Client struct {
-	UserID string
-	Conn   *websocket.Conn
-	Location Coordinates
-}
-
-type Coordinates struct {
-	Latitude  float64 `json:"latitude"`
-	Longitude float64 `json:"longitude"`
+	UserID   string
+	Conn     *websocket.Conn
+	Location location.Coordinates
 }
