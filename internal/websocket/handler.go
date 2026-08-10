@@ -13,8 +13,8 @@ import (
 )
 
 type Handler struct {
-	Hub *Hub
-    LocationService *location.Service
+	Hub             *Hub
+	LocationService *location.Service
 }
 
 // Handle chat message events
@@ -46,7 +46,7 @@ func (h *Handler) handleLocationUpdate(ctx context.Context, client *Client, even
 		return
 	}
 
-	client.Location = Coordinates{
+	client.Location = location.Coordinates{
 		Latitude:  locationUpdate.Latitude,
 		Longitude: locationUpdate.Longitude,
 	}
@@ -57,11 +57,14 @@ func (h *Handler) handleLocationUpdate(ctx context.Context, client *Client, even
 		return
 	}
 
+	nearbyUsers := h.Hub.FindNearbyUsers(client, 1000)
+
 	log.Printf(
-		"received location update: user_id=%s latitude=%f longitude=%f",
+		"received location update: user_id=%s latitude=%f longitude=%f, nearby_users=%v",
 		client.UserID,
 		locationUpdate.Latitude,
 		locationUpdate.Longitude,
+		nearbyUsers,
 	)
 }
 
