@@ -57,14 +57,13 @@ func (h *Handler) handleLocationUpdate(ctx context.Context, client *Client, even
 		return
 	}
 
-	nearbyUsers := h.Hub.FindNearbyUsers(client, 1000)
+	h.Hub.UpdateNearbyUsers(ctx, client, 1000)
 
 	log.Printf(
-		"received location update: user_id=%s latitude=%f longitude=%f, nearby_users=%v",
+		"received location update: user_id=%s latitude=%f longitude=%f",
 		client.UserID,
 		locationUpdate.Latitude,
 		locationUpdate.Longitude,
-		nearbyUsers,
 	)
 }
 

@@ -12,3 +12,6 @@ type LocationUpdate struct {
     Longitude float64 `json:"longitude"`
 }
 
+type NearbyUserNotification struct {
+    UserID string `json:"user_id"`
+}
