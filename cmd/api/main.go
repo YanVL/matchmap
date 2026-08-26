@@ -35,9 +35,9 @@ func main() {
 	userHandler := users.Handler{
 		DB: db,
 	}
-	hub := websocket.NewHub()
+	hub := websocket.NewHub(ctx)
 	wsHandler := websocket.Handler{
-		Hub: hub,
+		Hub:             hub,
 		LocationService: &locationService,
 	}
 

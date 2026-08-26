@@ -12,12 +12,14 @@ import (
 type Hub struct {
 	Clients map[string]*Client
 	Nearby  map[string][]string
+	Ctx     context.Context
 }
 
-func NewHub() *Hub {
+func NewHub(ctx context.Context) *Hub {
 	return &Hub{
 		Clients: make(map[string]*Client),
 		Nearby:  make(map[string][]string),
+		Ctx:     ctx,
 	}
 }
 
@@ -31,6 +33,34 @@ func (h *Hub) Register(client *Client) {
 }
 
 func (h *Hub) Unregister(client *Client) {
+
+	for _, nearbyUserID := range h.Nearby[client.UserID] {
+		otherClient, exists := h.Clients[nearbyUserID]
+		if !exists {
+			continue
+		}
+
+		notification := UserLeftNotification{
+			UserID: client.UserID,
+		}
+
+		payload, err := json.Marshal(notification)
+		if err != nil {
+			log.Printf("failed to marshal user left notification: %v", err)
+			continue
+		}
+
+		event := Event{
+			Type:    "user_left",
+			Payload: payload,
+		}
+
+		err = wsjson.Write(h.Ctx, otherClient.Conn, event)
+		if err != nil {
+			log.Printf("failed to notify user %s about %s leaving: %v", nearbyUserID, client.UserID, err)
+		}
+	}
+
 	delete(h.Clients, client.UserID)
 	delete(h.Nearby, client.UserID)
 }
@@ -66,7 +96,7 @@ func (h *Hub) FindNearbyUsers(client *Client, radius float64) []string {
 func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius float64) {
 	nearbyUsers := h.FindNearbyUsers(client, radius)
 
-	newNearby, _ := h.CompareNearbyUsers(client, nearbyUsers)
+	newNearby, noLongerNearby := h.CompareNearbyUsers(client, nearbyUsers)
 
 	h.Nearby[client.UserID] = nearbyUsers
 
@@ -81,6 +111,7 @@ func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius floa
 	}
 
 	h.NotifyNearbyUsers(ctx, client, newNearby)
+	h.notifyUsersLeft(ctx, client, noLongerNearby)
 
 	log.Printf("Updated nearby users for %s: %v", client.UserID, nearbyUsers)
 }
@@ -143,6 +174,43 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 		if err != nil {
 			log.Printf(
 				"failed to notify nearby user %s about %s: %v",
+				userID,
+				client.UserID,
+				err,
+			)
+		}
+	}
+}
+
+func (h *Hub) notifyUsersLeft(ctx context.Context, client *Client, noLongerNearbyUsers []string) {
+	for _, userID := range noLongerNearbyUsers {
+		otherClient, exists := h.Clients[userID]
+		if !exists {
+			continue
+		}
+
+		notification := UserLeftNotification{
+			UserID: client.UserID,
+		}
+
+		payload, err := json.Marshal(notification)
+		if err != nil {
+			log.Printf(
+				"failed to marshal user left notification: %v",
+				err,
+			)
+			continue
+		}
+
+		event := Event{
+			Type:    "user_left",
+			Payload: payload,
+		}
+
+		err = wsjson.Write(ctx, otherClient.Conn, event)
+		if err != nil {
+			log.Printf(
+				"failed to notify user %s about %s leaving: %v",
 				userID,
 				client.UserID,
 				err,

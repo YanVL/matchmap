@@ -15,3 +15,7 @@ type LocationUpdate struct {
 type NearbyUserNotification struct {
     UserID string `json:"user_id"`
 }
+
+type UserLeftNotification struct {
+    UserID string `json:"user_id"`
+}
