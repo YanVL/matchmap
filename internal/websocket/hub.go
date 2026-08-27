@@ -96,7 +96,7 @@ func (h *Hub) FindNearbyUsers(client *Client, radius float64) []string {
 func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius float64) {
 	nearbyUsers := h.FindNearbyUsers(client, radius)
 
-	newNearby, noLongerNearby := h.CompareNearbyUsers(client, nearbyUsers)
+	newNearby, noLongerNearby, stillNearby := h.CompareNearbyUsers(client, nearbyUsers)
 
 	h.Nearby[client.UserID] = nearbyUsers
 
@@ -105,20 +105,20 @@ func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius floa
 			continue
 		}
 
-		if location.IsNearby(client.Location, otherClient.Location, radius) {
-			h.Nearby[otherClient.UserID] = h.FindNearbyUsers(otherClient, radius)
-		}
+		h.Nearby[otherClient.UserID] = h.FindNearbyUsers(otherClient, radius)
 	}
 
 	h.NotifyNearbyUsers(ctx, client, newNearby)
 	h.notifyUsersLeft(ctx, client, noLongerNearby)
+	h.NotifyLocationUpdate(ctx, client, stillNearby)
 
 	log.Printf("Updated nearby users for %s: %v", client.UserID, nearbyUsers)
 }
 
-func (h *Hub) CompareNearbyUsers(client *Client, nearbyUsers []string) (newNearby []string, noLongerNearby []string) {
+func (h *Hub) CompareNearbyUsers(client *Client, nearbyUsers []string) (newNearby []string, noLongerNearby []string, stillNearby []string) {
 	previousNearby := h.Nearby[client.UserID]
 	updatedNearby := nearbyUsers
+	stillNearby = make([]string, 0)
 
 	previousMap := make(map[string]bool)
 	for _, userID := range previousNearby {
@@ -142,7 +142,13 @@ func (h *Hub) CompareNearbyUsers(client *Client, nearbyUsers []string) (newNearb
 		}
 	}
 
-	return newNearby, noLongerNearby
+	for userID := range previousMap {
+		if updatedMap[userID] {
+			stillNearby = append(stillNearby, userID)
+		}
+	}
+
+	return newNearby, noLongerNearby, stillNearby
 }
 
 func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby []string) {
@@ -153,7 +159,9 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 		}
 
 		notification := NearbyUserNotification{
-			UserID: client.UserID,
+			UserID:    client.UserID,
+			Latitude:  client.Location.Latitude,
+			Longitude: client.Location.Longitude,
 		}
 
 		payload, err := json.Marshal(notification)
@@ -211,6 +219,45 @@ func (h *Hub) notifyUsersLeft(ctx context.Context, client *Client, noLongerNearb
 		if err != nil {
 			log.Printf(
 				"failed to notify user %s about %s leaving: %v",
+				userID,
+				client.UserID,
+				err,
+			)
+		}
+	}
+}
+
+func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNearby []string) {
+	for _, userID := range stillNearby {
+		otherClient, exists := h.Clients[userID]
+		if !exists {
+			continue
+		}
+
+		notification := UserLocationUpdateNotification{
+			UserID:    client.UserID,
+			Latitude:  client.Location.Latitude,
+			Longitude: client.Location.Longitude,
+		}
+
+		payload, err := json.Marshal(notification)
+		if err != nil {
+			log.Printf(
+				"failed to marshal user location update notification: %v",
+				err,
+			)
+			continue
+		}
+
+		event := Event{
+			Type:    "user_location_update",
+			Payload: payload,
+		}
+
+		err = wsjson.Write(ctx, otherClient.Conn, event)
+		if err != nil {
+			log.Printf(
+				"failed to notify user %s about %s location update: %v",
 				userID,
 				client.UserID,
 				err,
