@@ -9,6 +9,7 @@ import (
 
 	"matchmap/internal/database"
 	"matchmap/internal/location"
+	"matchmap/internal/match"
 	"matchmap/internal/users"
 	"matchmap/internal/websocket"
 )
@@ -41,6 +42,16 @@ func main() {
 		LocationService: &locationService,
 	}
 
+	matchRepo := match.Repository{
+		DB: db,
+	}
+	matchService := match.Service{
+		Repository: &matchRepo,
+	}
+	matchHandler := match.Handler{
+		Service: &matchService,
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +64,7 @@ func main() {
 	mux.HandleFunc("PUT /users/{id}/location", locationHandler.UpdateLocation)
 	mux.HandleFunc("POST /nearby", locationHandler.Nearby)
 	mux.HandleFunc("GET /ws", wsHandler.Connect)
+	mux.HandleFunc("POST /match/invite", matchHandler.CreateInvite)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {

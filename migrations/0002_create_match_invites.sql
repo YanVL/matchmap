@@ -10,10 +10,8 @@ CREATE TABLE match_invites (
 );
 
 CREATE UNIQUE INDEX match_invites_pending_pair_idx
-
 ON match_invites (
     LEAST(sender_id, receiver_id),
     GREATEST(sender_id, receiver_id)
 )
-
 WHERE status = 'pending';
