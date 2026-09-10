@@ -3,6 +3,7 @@ package websocket
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"matchmap/internal/location"
 
@@ -264,4 +265,26 @@ func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNea
 			)
 		}
 	}
+}
+
+func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID string) error {
+	otherClient, exists := h.Clients[userID]
+
+	if !exists {
+		return nil
+	}
+
+	payload, err := json.Marshal(MatchInviteNotification{
+		SenderID: senderID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal match invite: %v", err)
+	}
+
+	event := Event{
+		Type:    "match_invite",
+		Payload: payload,
+	}
+
+	return wsjson.Write(ctx, otherClient.Conn, event)
 }

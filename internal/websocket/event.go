@@ -7,6 +7,10 @@ type Event struct {
 	Payload json.RawMessage `json:"payload"`
 }
 
+type MatchInviteNotification struct {
+	SenderID string `json:"sender_id"`
+}
+
 type LocationUpdate struct {
 	Latitude  float64 `json:"latitude"`
 	Longitude float64 `json:"longitude"`

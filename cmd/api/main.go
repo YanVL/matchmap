@@ -47,6 +47,7 @@ func main() {
 	}
 	matchService := match.Service{
 		Repository: &matchRepo,
+		Notifier:   hub,
 	}
 	matchHandler := match.Handler{
 		Service: &matchService,

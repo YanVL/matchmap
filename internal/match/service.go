@@ -13,6 +13,7 @@ var (
 
 type Service struct {
 	Repository *Repository
+	Notifier   Notifier
 }
 
 func (s *Service) CreateInvite(ctx context.Context, sender, receiver string) error {
@@ -33,12 +34,14 @@ func (s *Service) CreateInvite(ctx context.Context, sender, receiver string) err
 	}
 
 	err = s.Repository.CreateInvite(ctx, sender, receiver)
-	
+
 	if errors.Is(err, ErrInviteConflict) {
 		return ErrAlreadyInvited
 	}
 
-	return err
+	_ = s.Notifier.NotifyInviteCreated(ctx, receiver, sender)
+
+	return nil
 }
 
 func (s *Service) IsInvited(ctx context.Context, sender, receiver string) (bool, error) {
