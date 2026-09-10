@@ -2,13 +2,17 @@ package match
 
 import (
 	"context"
+	"errors"
 
+	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
 type Repository struct {
 	DB *pgxpool.Pool
 }
+
+var ErrInviteConflict = errors.New("invite already exists")
 
 func (r *Repository) CreateInvite(ctx context.Context, sender, receiver string) error {
 	_, err := r.DB.Exec(
@@ -21,7 +25,19 @@ func (r *Repository) CreateInvite(ctx context.Context, sender, receiver string) 
 		receiver,
 	)
 
-	return err
+	if err != nil {
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) &&
+			pgErr.Code == "23505" &&
+			pgErr.ConstraintName == "match_invites_pending_pair_idx" {
+			return ErrInviteConflict
+		}
+
+		return err
+	}
+
+	return nil
 }
 
 func (r *Repository) IsInvited(ctx context.Context, sender, receiver string) (bool, error) {

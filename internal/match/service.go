@@ -32,7 +32,13 @@ func (s *Service) CreateInvite(ctx context.Context, sender, receiver string) err
 		return ErrAlreadyInvited
 	}
 
-	return s.Repository.CreateInvite(ctx, sender, receiver)
+	err = s.Repository.CreateInvite(ctx, sender, receiver)
+	
+	if errors.Is(err, ErrInviteConflict) {
+		return ErrAlreadyInvited
+	}
+
+	return err
 }
 
 func (s *Service) IsInvited(ctx context.Context, sender, receiver string) (bool, error) {
