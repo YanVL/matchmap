@@ -1,9 +1,19 @@
 services:
+
+  migrate:
+    image: migrate/migrate
+    volumes:
+      - ./migrations:/migrations
+    env_file:
+      - .env
+    networks:
+      - matchmap-network
+
   api:
     build: .
     container_name: matchmap-api
     ports:
-      - "8080:8080"
+      - "${APP_PORT}:8080"
     env_file:
       - .env
     depends_on:
@@ -16,14 +26,13 @@ services:
     image: postgis/postgis:17-3.5
     container_name: matchmap-db
     ports:
-      - "5432:5432"
+      - "${DB_PORT}:5432"
     env_file:
       - .env
     volumes:
       - matchmap-db-data:/var/lib/postgresql/data
-      - ./migrations:/docker-entrypoint-initdb.d
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U matchmap -d matchmap"]
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
       interval: 5s
       timeout: 5s
       retries: 10
