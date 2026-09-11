@@ -66,6 +66,9 @@ func main() {
 	mux.HandleFunc("POST /nearby", locationHandler.Nearby)
 	mux.HandleFunc("GET /ws", wsHandler.Connect)
 	mux.HandleFunc("POST /match/invite", matchHandler.CreateInvite)
+	mux.HandleFunc("GET /match/invites", matchHandler.GetPendingInvites)
+	mux.HandleFunc("POST /match/accept", matchHandler.AcceptInvite)
+	mux.HandleFunc("POST /match/reject", matchHandler.RejectInvite)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {

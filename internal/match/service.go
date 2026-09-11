@@ -51,3 +51,27 @@ func (s *Service) IsInvited(ctx context.Context, sender, receiver string) (bool,
 	}
 	return exists, nil
 }
+
+func (s *Service) GetPendingInvites(ctx context.Context, userID string) ([]MatchInvite, error) {
+	invites, err := s.Repository.showPendingInvites(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+	return invites, nil
+}		
+
+func (s *Service) AcceptInvite(ctx context.Context, sender, receiver string) error {
+	err := s.Repository.AcceptInvite(ctx, sender, receiver)
+	if err != nil {
+		return err
+	}
+	return nil
+}
+
+func (s *Service) RejectInvite(ctx context.Context, sender, receiver string) error {
+	err := s.Repository.RejectInvite(ctx, sender, receiver)
+	if err != nil {
+		return err
+	}
+	return nil
+}
