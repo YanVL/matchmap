@@ -7,13 +7,7 @@ down:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml down
 
 migrate-up:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm migrate \
-		-path /migrations \
-		-database "$(shell grep '^DATABASE_URL=' .env | cut -d '=' -f2-)" \
-		up
+	docker compose -f docker-compose.yml run --rm migrate up
 
 migrate-force:
-	docker compose -f docker-compose.yml -f docker-compose.dev.yml run --rm migrate \
-		-path /migrations \
-		-database "$(shell grep '^DATABASE_URL=' .env | cut -d '=' -f2-)" \
-		force $(VERSION)
+	docker compose -f docker-compose.yml run --rm migrate force $(VERSION)

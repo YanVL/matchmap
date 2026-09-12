@@ -1,13 +1,15 @@
 services:
 
-  migrate:
-    image: migrate/migrate
-    volumes:
-      - ./migrations:/migrations
-    env_file:
-      - .env
-    networks:
-      - matchmap-network
+migrate:
+  image: migrate/migrate
+  volumes:
+    - ./migrations:/migrations
+  entrypoint: [ "migrate", "-path", "/migrations", "-database", "${DATABASE_URL}" ]
+  depends_on:
+    db:
+      condition: service_healthy
+  networks:
+    - matchmap-network
 
   api:
     build: .
@@ -32,7 +34,7 @@ services:
     volumes:
       - matchmap-db-data:/var/lib/postgresql/data
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      test: [ "CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}" ]
       interval: 5s
       timeout: 5s
       retries: 10
