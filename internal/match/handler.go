@@ -16,7 +16,7 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	sender := r.URL.Query().Get("sender")
 	receiver := r.URL.Query().Get("receiver")
 
-	err := h.Service.CreateInvite(r.Context(), sender, receiver)
+	inviteID, err := h.Service.CreateInvite(r.Context(), sender, receiver)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrMissingUsers), errors.Is(err, ErrSameUser):
@@ -29,33 +29,36 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusCreated)
-	w.Write([]byte("Invite created"))
+	json.NewEncoder(w).Encode(map[string]string{
+		"invite_id": inviteID,
+		"message":   "Invite created",
+	})
 }
 
 func (h *Handler) GetPendingInvites(w http.ResponseWriter, r *http.Request) {
-    userID := r.URL.Query().Get("user_id")
+	userID := r.URL.Query().Get("user_id")
 
-    invites, err := h.Service.GetPendingInvites(r.Context(), userID)
+	invites, err := h.Service.GetPendingInvites(r.Context(), userID)
 
-    if err != nil {
-        http.Error(w, errInternalServer, http.StatusInternalServerError)
-        return
-    }
+	if err != nil {
+		http.Error(w, errInternalServer, http.StatusInternalServerError)
+		return
+	}
 
-    w.Header().Set("Content-Type", "application/json")
-    w.WriteHeader(http.StatusOK)
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
 
-    json.NewEncoder(w).Encode(map[string]interface{}{
-        "invites": invites,
-    })
+	json.NewEncoder(w).Encode(map[string]interface{}{
+		"invites": invites,
+	})
 }
 
 func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
-	sender := r.URL.Query().Get("sender")
-	receiver := r.URL.Query().Get("receiver")
+	matchID := r.URL.Query().Get("invite_id")
 
-	err := h.Service.AcceptInvite(r.Context(), sender, receiver)
+	err := h.Service.AcceptInvite(r.Context(), matchID)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInviteNotFound):
@@ -71,10 +74,9 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RejectInvite(w http.ResponseWriter, r *http.Request) {
-	sender := r.URL.Query().Get("sender")
-	receiver := r.URL.Query().Get("receiver")
+	inviteID := r.URL.Query().Get("invite_id")
 
-	err := h.Service.RejectInvite(r.Context(), sender, receiver)
+	err := h.Service.RejectInvite(r.Context(), inviteID)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInviteNotFound):

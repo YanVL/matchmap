@@ -7,6 +7,7 @@ import (
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
+	"github.com/jackc/pgx/v5"
 )
 
 type Repository struct {
@@ -16,16 +17,18 @@ type Repository struct {
 var ErrInviteConflict = errors.New("invite already exists")
 var ErrInviteNotFound = errors.New("invite not found")
 
-func (r *Repository) CreateInvite(ctx context.Context, sender, receiver string) error {
-	_, err := r.DB.Exec(
+func (r *Repository) CreateInvite(ctx context.Context, sender, receiver string) (string, error) {
+	var inviteID string
+	err := r.DB.QueryRow(
 		ctx,
 		`
 		INSERT INTO match_invites (sender_id, receiver_id, status, created_at)
 		VALUES ($1, $2, 'pending', NOW())
+		RETURNING id
 		`,
 		sender,
 		receiver,
-	)
+	).Scan(&inviteID)
 
 	if err != nil {
 		var pgErr *pgconn.PgError
@@ -33,13 +36,13 @@ func (r *Repository) CreateInvite(ctx context.Context, sender, receiver string) 
 		if errors.As(err, &pgErr) &&
 			pgErr.Code == "23505" &&
 			pgErr.ConstraintName == "match_invites_pending_pair_idx" {
-			return ErrInviteConflict
+			return "", ErrInviteConflict
 		}
 
-		return err
+		return "", err
 	}
 
-	return nil
+	return inviteID, nil
 }
 
 func (r *Repository) IsInvited(ctx context.Context, sender, receiver string) (bool, error) {
@@ -62,10 +65,10 @@ func (r *Repository) IsInvited(ctx context.Context, sender, receiver string) (bo
 }
 
 type MatchInvite struct {
-	SenderID string `json:"sender_id"`
-	ReceiverID string `json:"receiver_id"`
-	Status string `json:"status"`
-	CreatedAt time.Time `json:"created_at"`
+	SenderID   string    `json:"sender_id"`
+	ReceiverID string    `json:"receiver_id"`
+	Status     string    `json:"status"`
+	CreatedAt  time.Time `json:"created_at"`
 }
 
 func (r *Repository) showPendingInvites(ctx context.Context, userID string) ([]MatchInvite, error) {
@@ -99,14 +102,57 @@ func (r *Repository) showPendingInvites(ctx context.Context, userID string) ([]M
 	return invites, nil
 }
 
-func (r *Repository) AcceptInvite(ctx context.Context, sender, receiver string) error {
+func (r *Repository) AcceptInviteAndCreateMatch(ctx context.Context, inviteID string) error {
+	tx, err := r.DB.Begin(ctx)
+	if err != nil {
+		return err
+	}
+	defer tx.Rollback(ctx)
+
+	var senderID, receiverID string
+
+	err = tx.QueryRow(
+		ctx,
+		`
+		UPDATE match_invites 
+		SET status = 'accepted' 
+		WHERE id = $1 AND status = 'pending'
+		RETURNING sender_id, receiver_id
+		`,
+		inviteID,
+	).Scan(&senderID, &receiverID)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrInviteNotFound
+		}
+		return err
+	}
+
+	_, err = tx.Exec(
+		ctx,
+		`
+		INSERT INTO matches (player_1_id, player_2_id, created_at)
+		VALUES ($1, $2, NOW())
+		`,
+		senderID,
+		receiverID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	return tx.Commit(ctx)
+}
+
+func (r *Repository) RejectInvite(ctx context.Context, inviteID string) error {
 	result, err := r.DB.Exec(
 		ctx,
 		`
-		UPDATE match_invites SET status = 'accepted' WHERE sender_id = $1 AND receiver_id = $2 AND status = 'pending'
+		UPDATE match_invites SET status = 'rejected' WHERE id = $1 AND status = 'pending'
 		`,
-		sender,
-		receiver,
+		inviteID,
 	)
 	if err != nil {
 		return err
@@ -119,23 +165,36 @@ func (r *Repository) AcceptInvite(ctx context.Context, sender, receiver string) 
 	return nil
 }
 
-func (r *Repository) RejectInvite(ctx context.Context, sender, receiver string) error {
-	result, err := r.DB.Exec(
+func (r *Repository) GetInviteByID(ctx context.Context, inviteID string) (*MatchInvite, error) {
+	var invite MatchInvite
+	err := r.DB.QueryRow(
 		ctx,
 		`
-		UPDATE match_invites SET status = 'rejected' WHERE sender_id = $1 AND receiver_id = $2 AND status = 'pending'
+		SELECT sender_id, receiver_id, status, created_at FROM match_invites
+		WHERE id = $1
 		`,
-		sender,
-		receiver,
-	)
+		inviteID,
+	).Scan(&invite.SenderID, &invite.ReceiverID, &invite.Status, &invite.CreatedAt)
+
 	if err != nil {
-		return err
+		return nil, err
 	}
 
-	if result.RowsAffected() == 0 {
-		return ErrInviteNotFound
-	}
-
-	return nil
+	return &invite, nil
 }
 
+func (r *Repository) IsUserInMatch(ctx context.Context, userID string) (bool, error) {
+	var exists bool
+	err := r.DB.QueryRow(
+		ctx,
+		`
+		SELECT EXISTS (
+			SELECT 1 FROM matches
+			WHERE (player_1_id = $1 OR player_2_id = $1) AND status = 'active'
+		)
+		`,
+		userID,
+	).Scan(&exists)
+
+	return exists, err
+}

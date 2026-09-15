@@ -6,9 +6,10 @@ import (
 )
 
 var (
-	ErrMissingUsers   = errors.New("sender and receiver are required")
-	ErrSameUser       = errors.New("sender and receiver cannot be the same user")
-	ErrAlreadyInvited = errors.New("sender and receiver are already invited")
+	ErrMissingUsers       = errors.New("sender and receiver are required")
+	ErrSameUser           = errors.New("sender and receiver cannot be the same user")
+	ErrAlreadyInvited     = errors.New("sender and receiver are already invited")
+	ErrUserAlreadyInMatch = errors.New("one of the users is already in a match")
 )
 
 type Service struct {
@@ -16,32 +17,35 @@ type Service struct {
 	Notifier   Notifier
 }
 
-func (s *Service) CreateInvite(ctx context.Context, sender, receiver string) error {
+func (s *Service) CreateInvite(ctx context.Context, sender, receiver string) (string, error) {
 	if sender == "" || receiver == "" {
-		return ErrMissingUsers
+		return "", ErrMissingUsers
 	}
 
 	if sender == receiver {
-		return ErrSameUser
+		return "", ErrSameUser
 	}
 
 	exists, err := s.IsInvited(ctx, sender, receiver)
 	if err != nil {
-		return err
+		return "", err
 	}
 	if exists {
-		return ErrAlreadyInvited
+		return "", ErrAlreadyInvited
 	}
 
-	err = s.Repository.CreateInvite(ctx, sender, receiver)
+	inviteID, err := s.Repository.CreateInvite(ctx, sender, receiver)
 
 	if errors.Is(err, ErrInviteConflict) {
-		return ErrAlreadyInvited
+		return "", ErrAlreadyInvited
+	}
+	if err != nil {
+		return "", err
 	}
 
 	_ = s.Notifier.NotifyInviteCreated(ctx, receiver, sender)
 
-	return nil
+	return inviteID, nil
 }
 
 func (s *Service) IsInvited(ctx context.Context, sender, receiver string) (bool, error) {
@@ -58,20 +62,36 @@ func (s *Service) GetPendingInvites(ctx context.Context, userID string) ([]Match
 		return nil, err
 	}
 	return invites, nil
-}		
-
-func (s *Service) AcceptInvite(ctx context.Context, sender, receiver string) error {
-	err := s.Repository.AcceptInvite(ctx, sender, receiver)
-	if err != nil {
-		return err
-	}
-	return nil
 }
 
-func (s *Service) RejectInvite(ctx context.Context, sender, receiver string) error {
-	err := s.Repository.RejectInvite(ctx, sender, receiver)
+func (s *Service) AcceptInvite(ctx context.Context, inviteID string) error {
+
+	invite, err := s.Repository.GetInviteByID(ctx, inviteID)
 	if err != nil {
 		return err
 	}
-	return nil
+
+	senderInMatch, err := s.Repository.IsUserInMatch(ctx, invite.SenderID)
+	if err != nil {
+		return err
+	}
+
+	if senderInMatch {
+		return ErrUserAlreadyInMatch
+	}
+
+	receiverInMatch, err := s.Repository.IsUserInMatch(ctx, invite.ReceiverID)
+	if err != nil {
+		return err
+	}
+
+	if receiverInMatch {
+		return ErrUserAlreadyInMatch
+	}
+
+	return s.Repository.AcceptInviteAndCreateMatch(ctx, inviteID)
+}
+
+func (s *Service) RejectInvite(ctx context.Context, inviteID string) error {
+	return s.Repository.RejectInvite(ctx, inviteID)
 }
