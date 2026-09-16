@@ -63,6 +63,8 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case errors.Is(err, ErrInviteNotFound):
 			http.Error(w, err.Error(), http.StatusNotFound)
+		case errors.Is(err, ErrUserAlreadyInMatch):
+			http.Error(w, err.Error(), http.StatusConflict)
 		default:
 			http.Error(w, errInternalServer, http.StatusInternalServerError)
 		}
