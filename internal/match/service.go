@@ -34,11 +34,6 @@ func (s *Service) CreateInvite(ctx context.Context, sender, receiver string) (st
 		return "", ErrAlreadyInvited
 	}
 
-	err = s.ensureUsersNotInMatch(ctx, sender, receiver)
-	if err != nil {
-		return "", err
-	}
-
 	inviteID, err := s.Repository.CreateInvite(ctx, sender, receiver)
 	if errors.Is(err, ErrInviteConflict) {
 		return "", ErrAlreadyInvited
@@ -69,37 +64,7 @@ func (s *Service) GetPendingInvites(ctx context.Context, userID string) ([]Match
 }
 
 func (s *Service) AcceptInvite(ctx context.Context, inviteID string) error {
-
-	invite, err := s.Repository.GetInviteByID(ctx, inviteID)
-	if err != nil {
-		return err
-	}
-
-	if err := s.ensureUsersNotInMatch(ctx, invite.SenderID, invite.ReceiverID); err != nil {
-		return err
-	}
-
 	return s.Repository.AcceptInviteAndCreateMatch(ctx, inviteID)
-}
-
-func (s *Service) ensureUsersNotInMatch(ctx context.Context, sender, receiver string) error {
-	senderInMatch, err := s.Repository.IsUserInMatch(ctx, sender)
-	if err != nil {
-		return err
-	}
-	if senderInMatch {
-		return ErrUserAlreadyInMatch
-	}
-
-	receiverInMatch, err := s.Repository.IsUserInMatch(ctx, receiver)
-	if err != nil {
-		return err
-	}
-	if receiverInMatch {
-		return ErrUserAlreadyInMatch
-	}
-
-	return nil
 }
 
 func (s *Service) RejectInvite(ctx context.Context, inviteID string) error {

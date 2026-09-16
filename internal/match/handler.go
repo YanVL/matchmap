@@ -56,9 +56,9 @@ func (h *Handler) GetPendingInvites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
-	matchID := r.URL.Query().Get("invite_id")
+	inviteID := r.URL.Query().Get("invite_id")
 
-	err := h.Service.AcceptInvite(r.Context(), matchID)
+	err := h.Service.AcceptInvite(r.Context(), inviteID)
 	if err != nil {
 		switch {
 		case errors.Is(err, ErrInviteNotFound):
