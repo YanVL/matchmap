@@ -34,8 +34,12 @@ func (s *Service) CreateInvite(ctx context.Context, sender, receiver string) (st
 		return "", ErrAlreadyInvited
 	}
 
-	inviteID, err := s.Repository.CreateInvite(ctx, sender, receiver)
+	err = s.ensureUsersNotInMatch(ctx, sender, receiver)
+	if err != nil {
+		return "", err
+	}
 
+	inviteID, err := s.Repository.CreateInvite(ctx, sender, receiver)
 	if errors.Is(err, ErrInviteConflict) {
 		return "", ErrAlreadyInvited
 	}
@@ -71,25 +75,31 @@ func (s *Service) AcceptInvite(ctx context.Context, inviteID string) error {
 		return err
 	}
 
-	senderInMatch, err := s.Repository.IsUserInMatch(ctx, invite.SenderID)
-	if err != nil {
+	if err := s.ensureUsersNotInMatch(ctx, invite.SenderID, invite.ReceiverID); err != nil {
 		return err
 	}
 
+	return s.Repository.AcceptInviteAndCreateMatch(ctx, inviteID)
+}
+
+func (s *Service) ensureUsersNotInMatch(ctx context.Context, sender, receiver string) error {
+	senderInMatch, err := s.Repository.IsUserInMatch(ctx, sender)
+	if err != nil {
+		return err
+	}
 	if senderInMatch {
 		return ErrUserAlreadyInMatch
 	}
 
-	receiverInMatch, err := s.Repository.IsUserInMatch(ctx, invite.ReceiverID)
+	receiverInMatch, err := s.Repository.IsUserInMatch(ctx, receiver)
 	if err != nil {
 		return err
 	}
-
 	if receiverInMatch {
 		return ErrUserAlreadyInMatch
 	}
 
-	return s.Repository.AcceptInviteAndCreateMatch(ctx, inviteID)
+	return nil
 }
 
 func (s *Service) RejectInvite(ctx context.Context, inviteID string) error {
