@@ -6,10 +6,12 @@ import (
 )
 
 var (
-	ErrMissingUsers       = errors.New("sender and receiver are required")
-	ErrSameUser           = errors.New("sender and receiver cannot be the same user")
-	ErrAlreadyInvited     = errors.New("sender and receiver are already invited")
-	ErrUserAlreadyInMatch = errors.New("one of the users is already in a match")
+	ErrMissingUsers               = errors.New("sender and receiver are required")
+	ErrSameUser                   = errors.New("sender and receiver cannot be the same user")
+	ErrAlreadyInvited             = errors.New("sender and receiver are already invited")
+	ErrUserAlreadyInMatch         = errors.New("one of the users is already in a match")
+	ErrMatchResultAlreadyRecorded = errors.New("match result has already been recorded")
+	ErrInvalidResult				 = errors.New("the result must be 'win', 'loss', or 'draw'")
 )
 
 type Service struct {
@@ -69,4 +71,16 @@ func (s *Service) AcceptInvite(ctx context.Context, inviteID string) error {
 
 func (s *Service) RejectInvite(ctx context.Context, inviteID string) error {
 	return s.Repository.RejectInvite(ctx, inviteID)
+}
+
+func (s *Service) FinishMatch(ctx context.Context, matchID, userID string) error {
+	return s.Repository.FinishMatch(ctx, matchID, userID)
+}
+
+func (s *Service) RecordMatchResult(ctx context.Context, matchID, userID, matchResult string) error {
+
+	if matchResult != "win" && matchResult != "loss" && matchResult != "draw" {
+		return ErrInvalidResult
+	}
+	return s.Repository.RecordMatchResult(ctx, matchID, userID, matchResult)
 }

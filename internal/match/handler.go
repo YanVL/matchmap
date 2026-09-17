@@ -92,3 +92,46 @@ func (h *Handler) RejectInvite(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	w.Write([]byte("Invite rejected"))
 }
+
+func (h *Handler) FinishMatch(w http.ResponseWriter, r *http.Request) {
+	matchID := r.URL.Query().Get("match_id")
+	userID := r.URL.Query().Get("user_id")
+
+	err := h.Service.FinishMatch(r.Context(), matchID, userID)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrMatchNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		default:
+			http.Error(w, errInternalServer, http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Match finish registered"))
+}
+
+func (h *Handler) RecordMatchResult(w http.ResponseWriter, r *http.Request) {
+	matchID := r.URL.Query().Get("match_id")
+	userID := r.URL.Query().Get("user_id")
+	result := r.URL.Query().Get("result")
+
+	err := h.Service.RecordMatchResult(r.Context(), matchID, userID, result)
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrMatchNotFound):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case errors.Is(err, ErrMatchResultAlreadyRecorded):
+			http.Error(w, err.Error(), http.StatusConflict)
+		case errors.Is(err, ErrInvalidResult):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		default:
+			http.Error(w, errInternalServer, http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Match result recorded"))
+}

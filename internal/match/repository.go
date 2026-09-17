@@ -16,6 +16,7 @@ type Repository struct {
 
 var ErrInviteConflict = errors.New("invite already exists")
 var ErrInviteNotFound = errors.New("invite not found")
+var ErrMatchNotFound = errors.New("match not found")
 
 func (r *Repository) CreateInvite(ctx context.Context, sender, receiver string) (string, error) {
 	var inviteID string
@@ -211,6 +212,81 @@ func (r *Repository) RejectInvite(ctx context.Context, inviteID string) error {
 
 	if result.RowsAffected() == 0 {
 		return ErrInviteNotFound
+	}
+
+	return nil
+}
+
+func (r *Repository) FinishMatch(ctx context.Context, matchID, userID string) error {
+	result, err := r.DB.Exec(
+		ctx,
+		`
+		UPDATE matches
+		SET
+			player_1_finished = CASE
+				WHEN player_1_id = $2 THEN true
+				ELSE player_1_finished
+			END,
+
+			player_2_finished = CASE
+				WHEN player_2_id = $2 THEN true
+				ELSE player_2_finished
+			END,
+
+			status = CASE
+				WHEN
+					(player_1_id = $2 AND player_2_finished)
+					OR
+					(player_2_id = $2 AND player_1_finished)
+				THEN 'finished'
+				ELSE status
+			END,
+
+			finished_at = CASE
+				WHEN
+					(player_1_id = $2 AND player_2_finished)
+					OR
+					(player_2_id = $2 AND player_1_finished)
+				THEN NOW()
+				ELSE finished_at
+			END
+
+		WHERE id = $1
+			AND status = 'active'
+			AND (player_1_id = $2 OR player_2_id = $2)
+		`,
+		matchID,
+		userID,
+	)
+
+	if err != nil {
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrMatchNotFound
+	}
+
+	return nil
+}
+
+func (r *Repository) RecordMatchResult(ctx context.Context, matchID, userID, matchResult string) error {
+	result, err := r.DB.Exec(
+		ctx,
+		`
+		INSERT INTO match_results (match_id, player_id, result)
+		VALUES ($1, $2, $3)
+		`,
+		matchID,
+		userID,
+		matchResult,
+	)
+	if err != nil {
+		return err
+	}
+
+	if result.RowsAffected() == 0 {
+		return ErrMatchNotFound
 	}
 
 	return nil
