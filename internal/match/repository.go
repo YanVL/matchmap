@@ -271,7 +271,7 @@ func (r *Repository) FinishMatch(ctx context.Context, matchID, userID string) er
 }
 
 func (r *Repository) RecordMatchResult(ctx context.Context, matchID, userID, matchResult string) error {
-	result, err := r.DB.Exec(
+	_, err := r.DB.Exec(
 		ctx,
 		`
 		INSERT INTO match_results (match_id, player_id, result)
@@ -281,13 +281,51 @@ func (r *Repository) RecordMatchResult(ctx context.Context, matchID, userID, mat
 		userID,
 		matchResult,
 	)
+
 	if err != nil {
+		var pgErr *pgconn.PgError
+
+		if errors.As(err, &pgErr) &&
+			pgErr.Code == "23505" &&
+			pgErr.ConstraintName == "match_results_match_id_player_id_key" {
+			return ErrMatchResultAlreadyRecorded
+		}
+
 		return err
 	}
 
-	if result.RowsAffected() == 0 {
-		return ErrMatchNotFound
+	return nil
+}
+
+type Match struct {
+	ID              string     `json:"id"`
+	Player1ID       string     `json:"player_1_id"`
+	Player2ID       string     `json:"player_2_id"`
+	Status          string     `json:"status"`
+	CreatedAt       time.Time  `json:"created_at"`
+	FinishedAt      *time.Time `json:"finished_at,omitempty"`
+	Player1Finished bool       `json:"player_1_finished"`
+	Player2Finished bool       `json:"player_2_finished"`
+}
+
+func (r *Repository) GetMatchByID(ctx context.Context, matchID string) (*Match, error) {
+	var match Match
+	err := r.DB.QueryRow(
+		ctx,
+		`
+		SELECT id, player_1_id, player_2_id, status, created_at, finished_at, player_1_finished, player_2_finished
+		FROM matches
+		WHERE id = $1
+		`,
+		matchID,
+	).Scan(&match.ID, &match.Player1ID, &match.Player2ID, &match.Status, &match.CreatedAt, &match.FinishedAt, &match.Player1Finished, &match.Player2Finished)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return nil, ErrMatchNotFound
+	}
+	if err != nil {
+		return nil, err
 	}
 
-	return nil
+	return &match, nil
 }

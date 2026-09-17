@@ -126,6 +126,8 @@ func (h *Handler) RecordMatchResult(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusConflict)
 		case errors.Is(err, ErrInvalidResult):
 			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, ErrMatchNotFinished):
+			http.Error(w, err.Error(), http.StatusConflict)
 		default:
 			http.Error(w, errInternalServer, http.StatusInternalServerError)
 		}

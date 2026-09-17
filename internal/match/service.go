@@ -11,7 +11,8 @@ var (
 	ErrAlreadyInvited             = errors.New("sender and receiver are already invited")
 	ErrUserAlreadyInMatch         = errors.New("one of the users is already in a match")
 	ErrMatchResultAlreadyRecorded = errors.New("match result has already been recorded")
-	ErrInvalidResult				 = errors.New("the result must be 'win', 'loss', or 'draw'")
+	ErrInvalidResult              = errors.New("the result must be 'win', 'loss', or 'draw'")
+	ErrMatchNotFinished           = errors.New("the match is not finished yet")
 )
 
 type Service struct {
@@ -82,5 +83,19 @@ func (s *Service) RecordMatchResult(ctx context.Context, matchID, userID, matchR
 	if matchResult != "win" && matchResult != "loss" && matchResult != "draw" {
 		return ErrInvalidResult
 	}
+
+	match, err := s.Repository.GetMatchByID(ctx, matchID)
+	if err != nil {
+		return err
+	}
+
+	if match.Player1ID != userID && match.Player2ID != userID {
+		return ErrMatchNotFound
+	}
+
+	if match.Status != "finished" {
+		return ErrMatchNotFinished
+	}
+
 	return s.Repository.RecordMatchResult(ctx, matchID, userID, matchResult)
 }
