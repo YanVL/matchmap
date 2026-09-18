@@ -329,3 +329,53 @@ func (r *Repository) GetMatchByID(ctx context.Context, matchID string) (*Match, 
 
 	return &match, nil
 }
+
+func (r *Repository) GetUserMatchResults(ctx context.Context, userID string) ([]UserMatchResult, error) {
+    rows, err := r.DB.Query(
+        ctx,
+        `
+        SELECT
+            mr.match_id,
+            mr.result,
+            opponent.result
+        FROM match_results mr
+        JOIN match_results opponent
+            ON opponent.match_id = mr.match_id
+            AND opponent.player_id <> mr.player_id
+        WHERE mr.player_id = $1
+        `,
+        userID,
+    )
+    if err != nil {
+        return nil, err
+    }
+    defer rows.Close()
+
+    var results []UserMatchResult
+
+    for rows.Next() {
+        var result UserMatchResult
+
+        if err := rows.Scan(
+            &result.MatchID,
+            &result.UserResult,
+            &result.OpponentResult,
+        ); err != nil {
+            return nil, err
+        }
+
+        results = append(results, result)
+    }
+
+    if err := rows.Err(); err != nil {
+        return nil, err
+    }
+
+    return results, nil
+}
+
+type UserMatchResult struct {
+    MatchID        string
+    UserResult     string
+    OpponentResult string
+}

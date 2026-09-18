@@ -13,6 +13,7 @@ var (
 	ErrMatchResultAlreadyRecorded = errors.New("match result has already been recorded")
 	ErrInvalidResult              = errors.New("the result must be 'win', 'loss', or 'draw'")
 	ErrMatchNotFinished           = errors.New("the match is not finished yet")
+	ErrOnePlayerResultMissing     = errors.New("one of the players has not recorded their result yet")
 )
 
 type Service struct {
@@ -98,4 +99,101 @@ func (s *Service) RecordMatchResult(ctx context.Context, matchID, userID, matchR
 	}
 
 	return s.Repository.RecordMatchResult(ctx, matchID, userID, matchResult)
+}
+
+type MatchStats struct {
+	Matches            int
+	Wins               int
+	Losses             int
+	Draws              int
+	Winrate            float64
+	ConcordantMatches  int
+	DiscordantMatches  int
+	ConcordanceRate    float64
+	ConcordantWins     int
+	WinConcordanceRate float64
+	Score              int
+}
+
+func isConcordant(result1, result2 string) bool {
+	return (result1 == "win" && result2 == "loss") ||
+		(result1 == "loss" && result2 == "win") ||
+		(result1 == "draw" && result2 == "draw")
+}
+
+func (s *Service) GetUserMatchStats(ctx context.Context, userID string) (*MatchStats, error) {
+	results, err := s.Repository.GetUserMatchResults(ctx, userID)
+	if err != nil {
+		return nil, err
+	}
+
+	stats := &MatchStats{}
+
+	for _, match := range results {
+		stats.Matches++
+
+		switch match.UserResult {
+		case "win":
+			stats.Wins++
+		case "loss":
+			stats.Losses++
+		case "draw":
+			stats.Draws++
+		}
+
+		concordance := "discordant"
+
+		if isConcordant(match.UserResult, match.OpponentResult) {
+			concordance = "concordant"
+			stats.ConcordantMatches++
+		} else {
+			stats.DiscordantMatches++
+		}
+
+		if match.UserResult == "win" && concordance == "concordant" {
+			stats.ConcordantWins++
+		}
+
+		stats.Score += calculateMatchScore(
+			match.UserResult,
+			concordance,
+		)
+	}
+
+	if stats.Matches > 0 {
+		stats.Winrate =
+			float64(stats.Wins) /
+				float64(stats.Matches) * 100
+
+		stats.ConcordanceRate =
+			float64(stats.ConcordantMatches) /
+				float64(stats.Matches) * 100
+	}
+
+	if stats.Wins > 0 {
+		stats.WinConcordanceRate =
+			float64(stats.ConcordantWins) /
+				float64(stats.Wins) * 100
+	}
+
+	return stats, nil
+}
+
+func calculateMatchScore(result, concordance string) int {
+	score := 0
+
+	switch result {
+	case "win":
+		score += 3
+	case "draw":
+		score += 1
+	}
+
+	if concordance == "concordant" {
+		score += 1
+	} else {
+		score -= 1
+	}
+
+	return score
 }

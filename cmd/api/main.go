@@ -71,6 +71,7 @@ func main() {
 	mux.HandleFunc("POST /match/reject", matchHandler.RejectInvite)
 	mux.HandleFunc("POST /match/finish", matchHandler.FinishMatch)
 	mux.HandleFunc("POST /match/result", matchHandler.RecordMatchResult)
+	mux.HandleFunc("GET /match/stats", matchHandler.GetUserMatchStats)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {
