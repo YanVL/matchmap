@@ -115,18 +115,16 @@ type MatchStats struct {
 	Score              int
 }
 
-func isConcordant(result1, result2 string) bool {
-	return (result1 == "win" && result2 == "loss") ||
-		(result1 == "loss" && result2 == "win") ||
-		(result1 == "draw" && result2 == "draw")
-}
-
 func (s *Service) GetUserMatchStats(ctx context.Context, userID string) (*MatchStats, error) {
 	results, err := s.Repository.GetUserMatchResults(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
 
+	return calculateMatchStats(results), nil
+}
+
+func calculateMatchStats(results []UserMatchResult) *MatchStats {
 	stats := &MatchStats{}
 
 	for _, match := range results {
@@ -176,7 +174,13 @@ func (s *Service) GetUserMatchStats(ctx context.Context, userID string) (*MatchS
 				float64(stats.Wins) * 100
 	}
 
-	return stats, nil
+	return stats
+}
+
+func isConcordant(result1, result2 string) bool {
+	return (result1 == "win" && result2 == "loss") ||
+		(result1 == "loss" && result2 == "win") ||
+		(result1 == "draw" && result2 == "draw")
 }
 
 func calculateMatchScore(result, concordance string) int {
