@@ -11,3 +11,6 @@ migrate-up:
 
 migrate-force:
 	docker compose -f docker-compose.yml run --rm migrate force $(VERSION)
+
+seed:
+	docker compose exec db psql -U matchmap -d matchmap -f /seeds/dev.sql
