@@ -73,7 +73,7 @@ type MatchInvite struct {
 	CreatedAt  time.Time `json:"created_at"`
 }
 
-func (r *Repository) showPendingInvites(ctx context.Context, userID string) ([]MatchInvite, error) {
+func (r *Repository) GetPendingInvites(ctx context.Context, userID string) ([]MatchInvite, error) {
 	rows, err := r.DB.Query(
 		ctx,
 		`

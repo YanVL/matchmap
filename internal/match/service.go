@@ -60,7 +60,7 @@ func (s *Service) IsInvited(ctx context.Context, sender, receiver string) (bool,
 }
 
 func (s *Service) GetPendingInvites(ctx context.Context, userID string) ([]MatchInvite, error) {
-	invites, err := s.Repository.showPendingInvites(ctx, userID)
+	invites, err := s.Repository.GetPendingInvites(ctx, userID)
 	if err != nil {
 		return nil, err
 	}
@@ -102,17 +102,17 @@ func (s *Service) RecordMatchResult(ctx context.Context, matchID, userID, matchR
 }
 
 type MatchStats struct {
-	Matches            int
-	Wins               int
-	Losses             int
-	Draws              int
-	Winrate            float64
-	ConcordantMatches  int
-	DiscordantMatches  int
-	ConcordanceRate    float64
-	ConcordantWins     int
-	WinConcordanceRate float64
-	Score              int
+	Matches            int     `json:"matches"`
+	Wins               int     `json:"wins"`
+	Losses             int     `json:"losses"`
+	Draws              int     `json:"draws"`
+	Winrate            float64 `json:"winrate"`
+	ConcordantMatches  int     `json:"concordant_matches"`
+	DiscordantMatches  int     `json:"discordant_matches"`
+	ConcordanceRate    float64 `json:"concordance_rate"`
+	ConcordantWins     int     `json:"concordant_wins"`
+	WinConcordanceRate float64 `json:"win_concordance_rate"`
+	Score              int     `json:"score"`
 }
 
 func (s *Service) GetUserMatchStats(ctx context.Context, userID string) (*MatchStats, error) {

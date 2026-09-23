@@ -9,9 +9,9 @@ import (
 
 	"matchmap/internal/database"
 	"matchmap/internal/location"
-	"matchmap/internal/match"
 	"matchmap/internal/users"
 	"matchmap/internal/websocket"
+	"matchmap/internal/match"
 )
 
 func main() {
