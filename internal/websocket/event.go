@@ -8,7 +8,29 @@ type Event struct {
 }
 
 type MatchInviteNotification struct {
+	InviteID string `json:"invite_id"`
 	SenderID string `json:"sender_id"`
+}
+
+type MatchAcceptedNotification struct {
+	MatchID    string `json:"match_id"`
+	PlayerID   string `json:"player_id"`
+	OpponentID string `json:"opponent_id"`
+}
+
+type MatchRejectedNotification struct {
+	UserID  string `json:"user_id"`
+	InviteID string `json:"invite_id"`
+}
+
+type MatchFinishedNotification struct {
+	MatchID string `json:"match_id"`
+}
+
+type MatchResultNotification struct {
+	MatchID     string `json:"match_id"`
+	PlayerID    string `json:"player_id"`
+	MatchResult string `json:"match_result"`
 }
 
 type LocationUpdate struct {

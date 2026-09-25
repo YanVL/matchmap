@@ -410,7 +410,7 @@ func TestRecordMatchResult(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = repo.RecordMatchResult(
+	_, err = repo.RecordMatchResult(
 		ctx,
 		matchID,
 		user1ID,
@@ -541,7 +541,7 @@ func TestRecordMatchResult_AlreadyRecorded(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = repo.RecordMatchResult(
+	_, err = repo.RecordMatchResult(
 		ctx,
 		matchID,
 		user1ID,
@@ -554,7 +554,7 @@ func TestRecordMatchResult_AlreadyRecorded(t *testing.T) {
 		)
 	}
 
-	err = repo.RecordMatchResult(
+	_, err = repo.RecordMatchResult(
 		ctx,
 		matchID,
 		user1ID,
@@ -659,7 +659,7 @@ func TestFinishMatch_FirstPlayer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = repo.FinishMatch(
+	_, bothFinished, err := repo.FinishMatch(
 		ctx,
 		matchID,
 		player1ID,
@@ -669,6 +669,9 @@ func TestFinishMatch_FirstPlayer(t *testing.T) {
 			"expected first player to finish successfully, got %v",
 			err,
 		)
+	}
+	if bothFinished {
+		t.Error("expected bothFinished to be false after only player 1 finishes")
 	}
 
 	var (
@@ -813,7 +816,7 @@ func TestFinishMatch_SecondPlayer(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = repo.FinishMatch(
+	_, bothFinished, err := repo.FinishMatch(
 		ctx,
 		matchID,
 		player2ID,
@@ -823,6 +826,9 @@ func TestFinishMatch_SecondPlayer(t *testing.T) {
 			"expected second player to finish successfully, got %v",
 			err,
 		)
+	}
+	if !bothFinished {
+		t.Error("expected bothFinished to be true after both players finish")
 	}
 
 	var (
@@ -969,7 +975,7 @@ func TestFinishMatch_UserNotInMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = repo.FinishMatch(
+	_, _, err = repo.FinishMatch(
 		ctx,
 		matchID,
 		outsiderID,
@@ -1084,7 +1090,7 @@ func TestFinishMatch_AlreadyFinished(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = repo.FinishMatch(
+	_, _, err = repo.FinishMatch(
 		ctx,
 		matchID,
 		player1ID,
@@ -1217,18 +1223,24 @@ func TestAcceptInviteAndCreateMatch_Concurrent(t *testing.T) {
 
 	go func() {
 		<-start
-		errCh <- repo.AcceptInviteAndCreateMatch(
+
+		_, _, _, err := repo.AcceptInviteAndCreateMatch(
 			ctx,
 			inviteAB,
 		)
+
+		errCh <- err
 	}()
 
 	go func() {
 		<-start
-		errCh <- repo.AcceptInviteAndCreateMatch(
+
+		_, _, _, err := repo.AcceptInviteAndCreateMatch(
 			ctx,
 			inviteAC,
 		)
+
+		errCh <- err
 	}()
 
 	close(start)

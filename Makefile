@@ -14,3 +14,9 @@ migrate-force:
 
 seed:
 	docker compose exec db psql -U matchmap -d matchmap -f /seeds/dev.sql
+
+test:
+	go test ./internal/match -v
+
+test-race:
+	go test ./internal/match -race -v

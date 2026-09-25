@@ -874,7 +874,7 @@ func TestAcceptInviteAndCreateMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = repo.AcceptInviteAndCreateMatch(
+	_, _, _, err = repo.AcceptInviteAndCreateMatch(
 		ctx,
 		inviteID,
 	)
@@ -1096,7 +1096,7 @@ func TestAcceptInviteAndCreateMatch_UserAlreadyInMatch(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = repo.AcceptInviteAndCreateMatch(
+	_, _, _, err = repo.AcceptInviteAndCreateMatch(
 		ctx,
 		inviteID,
 	)
@@ -1177,7 +1177,7 @@ func TestAcceptInviteAndCreateMatch_InviteNotFound(t *testing.T) {
 		db.Close()
 	})
 
-	err = repo.AcceptInviteAndCreateMatch(
+	_, _, _, err = repo.AcceptInviteAndCreateMatch(
 		ctx,
 		inviteID,
 	)
@@ -1271,7 +1271,7 @@ func TestRejectInvite(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	err = repo.RejectInvite(ctx, inviteID)
+	_, err = repo.RejectInvite(ctx, inviteID)
 	if err != nil {
 		t.Fatalf(
 			"expected invite to be rejected successfully, got %v",
@@ -1324,7 +1324,7 @@ func TestRejectInvite_InviteNotFound(t *testing.T) {
 
 	inviteID := "aaaaaaaa-1111-2222-3333-aaaaaaaaaaaa"
 
-	err = repo.RejectInvite(ctx, inviteID)
+	_, err = repo.RejectInvite(ctx, inviteID)
 
 	if !errors.Is(err, ErrInviteNotFound) {
 		t.Fatalf(

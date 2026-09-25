@@ -104,14 +104,12 @@ func (r *Repository) GetPendingInvites(ctx context.Context, userID string) ([]Ma
 	return invites, nil
 }
 
-func (r *Repository) AcceptInviteAndCreateMatch(ctx context.Context, inviteID string) error {
+func (r *Repository) AcceptInviteAndCreateMatch(ctx context.Context, inviteID string) (matchID, senderID, receiverID string, err error) {
 	tx, err := r.DB.Begin(ctx)
 	if err != nil {
-		return err
+		return "", "", "", err
 	}
 	defer tx.Rollback(ctx)
-
-	var senderID, receiverID string
 
 	err = tx.QueryRow(
 		ctx,
@@ -123,10 +121,10 @@ func (r *Repository) AcceptInviteAndCreateMatch(ctx context.Context, inviteID st
 		inviteID,
 	).Scan(&senderID, &receiverID)
 	if errors.Is(err, pgx.ErrNoRows) {
-		return ErrInviteNotFound
+		return "", "", "", ErrInviteNotFound
 	}
 	if err != nil {
-		return err
+		return "", "", "", err
 	}
 
 	// Lock the users to prevent race conditions
@@ -142,7 +140,7 @@ func (r *Repository) AcceptInviteAndCreateMatch(ctx context.Context, inviteID st
 		receiverID,
 	)
 	if err != nil {
-		return err
+		return "", "", "", err
 	}
 
 	var exists bool
@@ -159,10 +157,10 @@ func (r *Repository) AcceptInviteAndCreateMatch(ctx context.Context, inviteID st
 		receiverID,
 	).Scan(&exists)
 	if err != nil {
-		return err
+		return "", "", "", err
 	}
 	if exists {
-		return ErrUserAlreadyInMatch
+		return "", "", "", ErrUserAlreadyInMatch
 	}
 
 	result, err := tx.Exec(
@@ -175,50 +173,59 @@ func (r *Repository) AcceptInviteAndCreateMatch(ctx context.Context, inviteID st
 		inviteID,
 	)
 	if err != nil {
-		return err
+		return "", "", "", err
 	}
 	if result.RowsAffected() == 0 {
-		return ErrInviteNotFound
+		return "", "", "", ErrInviteNotFound
 	}
 
-	_, err = tx.Exec(
+	err = tx.QueryRow(
 		ctx,
 		`
 		INSERT INTO matches (player_1_id, player_2_id, created_at)
 		VALUES ($1, $2, NOW())
+		RETURNING id
 		`,
 		senderID,
 		receiverID,
-	)
+	).Scan(&matchID)
 
 	if err != nil {
-		return err
+		return "", "", "", err
 	}
 
-	return tx.Commit(ctx)
+	if err := tx.Commit(ctx); err != nil {
+		return "", "", "", err
+	}
+
+	return matchID, senderID, receiverID, nil
 }
 
-func (r *Repository) RejectInvite(ctx context.Context, inviteID string) error {
-	result, err := r.DB.Exec(
+func (r *Repository) RejectInvite(ctx context.Context, inviteID string) (senderID string, err error) {
+	err = r.DB.QueryRow(
 		ctx,
 		`
-		UPDATE match_invites SET status = 'rejected' WHERE id = $1 AND status = 'pending'
+		UPDATE match_invites 
+		SET status = 'rejected' 
+		WHERE id = $1 AND status = 'pending'
+		RETURNING sender_id
 		`,
 		inviteID,
-	)
+	).Scan(&senderID)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", ErrInviteNotFound
+	}
+
 	if err != nil {
-		return err
+		return "", err
 	}
 
-	if result.RowsAffected() == 0 {
-		return ErrInviteNotFound
-	}
-
-	return nil
+	return senderID, nil
 }
 
-func (r *Repository) FinishMatch(ctx context.Context, matchID, userID string) error {
-	result, err := r.DB.Exec(
+func (r *Repository) FinishMatch(ctx context.Context, matchID, userID string) (player2ID string, bothFinished bool, err error) {
+	err = r.DB.QueryRow(
 		ctx,
 		`
 		UPDATE matches
@@ -254,47 +261,69 @@ func (r *Repository) FinishMatch(ctx context.Context, matchID, userID string) er
 		WHERE id = $1
 			AND status = 'active'
 			AND (player_1_id = $2 OR player_2_id = $2)
+		RETURNING 
+			CASE
+				WHEN player_1_id = $2 THEN player_2_id
+				ELSE player_1_id
+			END,
+			player_1_finished AND player_2_finished
 		`,
 		matchID,
 		userID,
-	)
+	).Scan(&player2ID, &bothFinished)
+
+	if errors.Is(err, pgx.ErrNoRows) {
+		return "", false, ErrMatchNotFound
+	}
 
 	if err != nil {
-		return err
+		return "", false, err
 	}
 
-	if result.RowsAffected() == 0 {
-		return ErrMatchNotFound
-	}
-
-	return nil
+	return player2ID, bothFinished, nil
 }
 
-func (r *Repository) RecordMatchResult(ctx context.Context, matchID, userID, matchResult string) error {
-	_, err := r.DB.Exec(
-		ctx,
-		`
-		INSERT INTO match_results (match_id, player_id, result)
-		VALUES ($1, $2, $3)
-		`,
-		matchID,
-		userID,
-		matchResult,
-	)
+func (r *Repository) RecordMatchResult(ctx context.Context, matchID, userID, matchResult string) (otherPlayerID string, err error) {
+    err = r.DB.QueryRow(
+        ctx,
+        `
+        INSERT INTO match_results (match_id, player_id, result)
+        VALUES ($1, $2, $3)
+        RETURNING (
+            SELECT CASE
+                WHEN player_1_id = $2 THEN player_2_id
+                ELSE player_1_id
+            END
+            FROM matches
+            WHERE id = $1
+        )
+        `,
+        matchID,
+        userID,
+        matchResult,
+    ).Scan(&otherPlayerID)
 
-	if err != nil {
-		var pgErr *pgconn.PgError
+    if err != nil {
+        if errors.Is(err, pgx.ErrNoRows) {
+            return "", ErrMatchNotFound
+        }
 
-		if errors.As(err, &pgErr) &&
-			pgErr.Code == "23505" &&
-			pgErr.ConstraintName == "match_results_match_id_player_id_key" {
-			return ErrMatchResultAlreadyRecorded
-		}
+        if isUniqueViolation(err) {
+            return "", ErrMatchResultAlreadyRecorded
+        }
 
-		return err
+        return "", err
+    }
+
+    return otherPlayerID, nil
+}
+
+func isUniqueViolation(err error) bool {
+	var pgErr *pgconn.PgError
+	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
+		return true
 	}
-
-	return nil
+	return false
 }
 
 type Match struct {

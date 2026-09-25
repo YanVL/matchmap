@@ -267,7 +267,7 @@ func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNea
 	}
 }
 
-func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID string) error {
+func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID string, inviteID string) error {
 	otherClient, exists := h.Clients[userID]
 
 	if !exists {
@@ -276,6 +276,7 @@ func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID s
 
 	payload, err := json.Marshal(MatchInviteNotification{
 		SenderID: senderID,
+		InviteID: inviteID,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to marshal match invite: %v", err)
@@ -283,6 +284,100 @@ func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID s
 
 	event := Event{
 		Type:    "match_invite",
+		Payload: payload,
+	}
+
+	return wsjson.Write(ctx, otherClient.Conn, event)
+}
+
+func (h *Hub) NotifyMatchAccepted(ctx context.Context, userID, opponentID, matchID string) error {
+	otherClient, exists := h.Clients[userID]
+
+	if !exists {
+		return nil
+	}
+
+	payload, err := json.Marshal(MatchAcceptedNotification{
+		MatchID:    matchID,
+		PlayerID:   userID,
+		OpponentID: opponentID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal match accepted notification: %v", err)
+	}
+
+	event := Event{
+		Type:    "match_accepted",
+		Payload: payload,
+	}
+
+	return wsjson.Write(ctx, otherClient.Conn, event)
+}
+
+func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) error {
+
+	otherClient, exists := h.Clients[userID]
+
+	if !exists {
+		return nil
+	}
+
+	payload, err := json.Marshal(MatchRejectedNotification{
+		UserID:   userID,
+		InviteID: inviteID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal match rejected notification: %v", err)
+	}
+
+	event := Event{
+		Type:    "match_rejected",
+		Payload: payload,
+	}
+
+	return wsjson.Write(ctx, otherClient.Conn, event)
+}
+
+func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, matchID string) error {
+	otherClient, exists := h.Clients[userID]
+
+	if !exists {
+		return nil
+	}
+
+	payload, err := json.Marshal(MatchFinishedNotification{
+		MatchID: matchID,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal match finished notification: %v", err)
+	}
+
+	event := Event{
+		Type:    "match_finished",
+		Payload: payload,
+	}
+
+	return wsjson.Write(ctx, otherClient.Conn, event)
+}
+
+func (h *Hub) NotifyMatchResult(ctx context.Context, userID, matchID, matchResult string) error {
+	otherClient, exists := h.Clients[userID]
+
+	if !exists {
+		return nil
+	}
+
+	payload, err := json.Marshal(MatchResultNotification{
+		MatchID:     matchID,
+		PlayerID:    userID,
+		MatchResult: matchResult,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal match result notification: %v", err)
+	}
+
+	event := Event{
+		Type:    "match_result",
 		Payload: payload,
 	}
 

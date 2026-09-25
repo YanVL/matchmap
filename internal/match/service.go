@@ -13,7 +13,6 @@ var (
 	ErrMatchResultAlreadyRecorded = errors.New("match result has already been recorded")
 	ErrInvalidResult              = errors.New("the result must be 'win', 'loss', or 'draw'")
 	ErrMatchNotFinished           = errors.New("the match is not finished yet")
-	ErrOnePlayerResultMissing     = errors.New("one of the players has not recorded their result yet")
 )
 
 type Service struct {
@@ -46,7 +45,7 @@ func (s *Service) CreateInvite(ctx context.Context, sender, receiver string) (st
 		return "", err
 	}
 
-	_ = s.Notifier.NotifyInviteCreated(ctx, receiver, sender)
+	_ = s.Notifier.NotifyInviteCreated(ctx, receiver, sender, inviteID)
 
 	return inviteID, nil
 }
@@ -68,15 +67,38 @@ func (s *Service) GetPendingInvites(ctx context.Context, userID string) ([]Match
 }
 
 func (s *Service) AcceptInvite(ctx context.Context, inviteID string) error {
-	return s.Repository.AcceptInviteAndCreateMatch(ctx, inviteID)
+	matchID, userID, opponentID, err := s.Repository.AcceptInviteAndCreateMatch(ctx, inviteID)
+	if err != nil {
+		return err
+	}
+
+	_ = s.Notifier.NotifyMatchAccepted(ctx, userID, opponentID, matchID)
+	_ = s.Notifier.NotifyMatchAccepted(ctx, opponentID, userID, matchID)
+	return nil
 }
 
 func (s *Service) RejectInvite(ctx context.Context, inviteID string) error {
-	return s.Repository.RejectInvite(ctx, inviteID)
+	senderID, err := s.Repository.RejectInvite(ctx, inviteID)
+	if err != nil {
+		return err
+	}
+
+	_ = s.Notifier.NotifyMatchRejected(ctx, senderID, inviteID)
+	return nil
 }
 
 func (s *Service) FinishMatch(ctx context.Context, matchID, userID string) error {
-	return s.Repository.FinishMatch(ctx, matchID, userID)
+	otherPlayerID, bothFinished, err := s.Repository.FinishMatch(ctx, matchID, userID)
+	if err != nil {
+		return err
+	}
+
+	if bothFinished {
+		_ = s.Notifier.NotifyMatchFinished(ctx, userID, otherPlayerID, matchID)
+		_ = s.Notifier.NotifyMatchFinished(ctx, otherPlayerID, userID, matchID)
+	}
+
+	return nil
 }
 
 func (s *Service) RecordMatchResult(ctx context.Context, matchID, userID, matchResult string) error {
@@ -98,7 +120,15 @@ func (s *Service) RecordMatchResult(ctx context.Context, matchID, userID, matchR
 		return ErrMatchNotFinished
 	}
 
-	return s.Repository.RecordMatchResult(ctx, matchID, userID, matchResult)
+	otherPlayerID, err := s.Repository.RecordMatchResult(ctx, matchID, userID, matchResult)
+	if err != nil {
+		return err
+	}
+
+	_ = s.Notifier.NotifyMatchResult(ctx, userID, matchID, matchResult)
+	_ = s.Notifier.NotifyMatchResult(ctx, otherPlayerID, matchID, matchResult)
+
+	return nil
 }
 
 type MatchStats struct {
