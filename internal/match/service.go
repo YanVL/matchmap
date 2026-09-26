@@ -125,8 +125,8 @@ func (s *Service) RecordMatchResult(ctx context.Context, matchID, userID, matchR
 		return err
 	}
 
-	_ = s.Notifier.NotifyMatchResult(ctx, userID, matchID, matchResult)
-	_ = s.Notifier.NotifyMatchResult(ctx, otherPlayerID, matchID, matchResult)
+	_ = s.Notifier.NotifyMatchResult(ctx, userID, userID, matchID, matchResult)
+	_ = s.Notifier.NotifyMatchResult(ctx, otherPlayerID, userID, matchID, matchResult)
 
 	return nil
 }

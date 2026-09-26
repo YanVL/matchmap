@@ -360,8 +360,8 @@ func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, match
 	return wsjson.Write(ctx, otherClient.Conn, event)
 }
 
-func (h *Hub) NotifyMatchResult(ctx context.Context, userID, matchID, matchResult string) error {
-	otherClient, exists := h.Clients[userID]
+func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matchID, matchResult string) error {
+	otherClient, exists := h.Clients[recipientID]
 
 	if !exists {
 		return nil
@@ -369,7 +369,7 @@ func (h *Hub) NotifyMatchResult(ctx context.Context, userID, matchID, matchResul
 
 	payload, err := json.Marshal(MatchResultNotification{
 		MatchID:     matchID,
-		PlayerID:    userID,
+		PlayerID:    playerID,
 		MatchResult: matchResult,
 	})
 	if err != nil {
