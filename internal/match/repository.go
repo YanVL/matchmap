@@ -284,9 +284,9 @@ func (r *Repository) FinishMatch(ctx context.Context, matchID, userID string) (p
 }
 
 func (r *Repository) RecordMatchResult(ctx context.Context, matchID, userID, matchResult string) (otherPlayerID string, err error) {
-    err = r.DB.QueryRow(
-        ctx,
-        `
+	err = r.DB.QueryRow(
+		ctx,
+		`
         INSERT INTO match_results (match_id, player_id, result)
         VALUES ($1, $2, $3)
         RETURNING (
@@ -298,24 +298,24 @@ func (r *Repository) RecordMatchResult(ctx context.Context, matchID, userID, mat
             WHERE id = $1
         )
         `,
-        matchID,
-        userID,
-        matchResult,
-    ).Scan(&otherPlayerID)
+		matchID,
+		userID,
+		matchResult,
+	).Scan(&otherPlayerID)
 
-    if err != nil {
-        if errors.Is(err, pgx.ErrNoRows) {
-            return "", ErrMatchNotFound
-        }
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return "", ErrMatchNotFound
+		}
 
-        if isUniqueViolation(err) {
-            return "", ErrMatchResultAlreadyRecorded
-        }
+		if isUniqueViolation(err) {
+			return "", ErrMatchResultAlreadyRecorded
+		}
 
-        return "", err
-    }
+		return "", err
+	}
 
-    return otherPlayerID, nil
+	return otherPlayerID, nil
 }
 
 func isUniqueViolation(err error) bool {
