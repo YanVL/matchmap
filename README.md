@@ -2,15 +2,25 @@
 
 API em Go para localização, convites e partidas em tempo real (WebSocket), com PostgreSQL/PostGIS.
 
-Os fluxos de desenvolvimento e migração passam pelo `Makefile`. Antes de qualquer comando, tenha o Docker Compose disponível e um arquivo `.env` na raiz (usado pela API e pelo banco) com pelo menos:
+Os fluxos de desenvolvimento e migração passam pelo `Makefile`. Antes de qualquer comando, tenha o Docker Compose disponível e um arquivo `.env` na raiz (usado pela API e pelo banco).
 
-```env
-POSTGRES_USER=
-POSTGRES_PASSWORD=
-POSTGRES_DB=
-APP_PORT=8080
-DB_PORT=5432
+Copie o exemplo e ajuste os valores se precisar:
+
+```bash
+cp .env.example .env
 ```
+
+O `.env.example` documenta as variáveis:
+
+| Variável | Uso |
+| --- | --- |
+| `POSTGRES_USER` | Usuário do Postgres (também no healthcheck e nas seeds) |
+| `POSTGRES_PASSWORD` | Senha do Postgres |
+| `POSTGRES_DB` | Nome do banco |
+| `APP_PORT` | Porta publicada da API no host |
+| `DB_PORT` | Porta publicada do Postgres no host |
+
+`DATABASE_URL` não precisa estar no `.env` quando a API sobe pelo Compose: o `docker-compose.yml` monta a URL a partir das variáveis `POSTGRES_*`. Descomente `DATABASE_URL` no `.env` se for rodar a API fora do Docker.
 
 ## Comandos do Makefile
 
