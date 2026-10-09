@@ -7,12 +7,12 @@ import (
 	"net/http"
 	"os"
 
+	"matchmap/internal/chat"
 	"matchmap/internal/database"
 	"matchmap/internal/location"
+	"matchmap/internal/match"
 	"matchmap/internal/users"
 	"matchmap/internal/websocket"
-	"matchmap/internal/match"
-	"matchmap/internal/chat"
 )
 
 func main() {
@@ -85,7 +85,7 @@ func main() {
 	mux.HandleFunc("GET /match/stats", matchHandler.GetUserMatchStats)
 	mux.HandleFunc("GET /chat/conversation", chatHandler.GetOrCreateConversation)
 	mux.HandleFunc("POST /chat/message", chatHandler.CreateMessage)
-	
+
 	port := os.Getenv("APP_PORT")
 	if port == "" {
 		port = "8080"

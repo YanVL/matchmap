@@ -11,9 +11,9 @@ type Handler struct {
 }
 
 const (
-    errInternalServer  = "internal server error"
-    headerContentType  = "Content-Type"
-    contentTypeJSON    = "application/json"
+	errInternalServer = "internal server error"
+	headerContentType = "Content-Type"
+	contentTypeJSON   = "application/json"
 )
 
 func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
@@ -33,7 +33,7 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    w.Header().Set(headerContentType, contentTypeJSON)
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
 		"invite_id": inviteID,
@@ -51,7 +51,7 @@ func (h *Handler) GetPendingInvites(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-    w.Header().Set(headerContentType, contentTypeJSON)
+	w.Header().Set(headerContentType, contentTypeJSON)
 	w.WriteHeader(http.StatusOK)
 
 	json.NewEncoder(w).Encode(map[string]interface{}{
@@ -143,16 +143,16 @@ func (h *Handler) RecordMatchResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUserMatchStats(w http.ResponseWriter, r *http.Request) {
-    userID := r.URL.Query().Get("user_id")
+	userID := r.URL.Query().Get("user_id")
 
-    stats, err := h.Service.GetUserMatchStats(r.Context(), userID)
-    if err != nil {
-        http.Error(w, errInternalServer, http.StatusInternalServerError)
-        return
-    }
+	stats, err := h.Service.GetUserMatchStats(r.Context(), userID)
+	if err != nil {
+		http.Error(w, errInternalServer, http.StatusInternalServerError)
+		return
+	}
 
-    w.Header().Set(headerContentType, contentTypeJSON)
-    w.WriteHeader(http.StatusOK)
+	w.Header().Set(headerContentType, contentTypeJSON)
+	w.WriteHeader(http.StatusOK)
 
-    json.NewEncoder(w).Encode(stats)
+	json.NewEncoder(w).Encode(stats)
 }

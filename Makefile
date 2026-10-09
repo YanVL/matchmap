@@ -20,3 +20,6 @@ test:
 
 test-race:
 	go test ./internal/match -race -v
+
+format:
+	go fmt ./...

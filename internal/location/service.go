@@ -15,4 +15,3 @@ func (s *Service) UpdateLocation(ctx context.Context, userID string, latitude fl
 func (s *Service) Nearby(ctx context.Context, longitude, latitude float64, radius int) ([]string, error) {
 	return s.Repository.GetNearbyUsers(ctx, longitude, latitude, radius)
 }
-

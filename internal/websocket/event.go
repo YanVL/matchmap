@@ -19,7 +19,7 @@ type MatchAcceptedNotification struct {
 }
 
 type MatchRejectedNotification struct {
-	UserID  string `json:"user_id"`
+	UserID   string `json:"user_id"`
 	InviteID string `json:"invite_id"`
 }
 

@@ -2,10 +2,9 @@ package chat
 
 import (
 	"encoding/json"
-	"net/http"
 	"errors"
+	"net/http"
 )
-
 
 type Handler struct {
 	Service *Service
