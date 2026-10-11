@@ -383,3 +383,33 @@ func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matc
 
 	return wsjson.Write(ctx, otherClient.Conn, event)
 }
+
+func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversationID, senderID, message string) error {
+
+	otherClient, exists := h.Clients[recipientID]
+
+	if !exists {
+		return nil
+	}
+
+	payload, err := json.Marshal(PrivateMessageNotification{
+		ConversationID: conversationID,
+		SenderID:       senderID,
+		Content:        message,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal message notification: %v", err)
+	}
+
+	event := Event{
+		Type:    "message_received",
+		Payload: payload,
+	}
+
+	err = wsjson.Write(ctx, otherClient.Conn, event)
+	if err != nil {
+		log.Printf("failed to notify user %s about new message from %s: %v", otherClient.UserID, senderID, err)
+	}
+
+	return err
+}

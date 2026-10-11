@@ -59,6 +59,7 @@ func main() {
 	}
 	chatService := chat.Service{
 		Repository: &chatRepo,
+		Notifier:   hub,
 	}
 	chatHandler := chat.Handler{
 		Service: &chatService,

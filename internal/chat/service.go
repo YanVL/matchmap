@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"log"
 	"strings"
 
 	"github.com/google/uuid"
@@ -11,6 +12,7 @@ import (
 
 type Service struct {
 	Repository *Repository
+	Notifier   Notifier
 }
 
 var ErrUserNotInConversation = errors.New("user is not part of the conversation")
@@ -107,17 +109,23 @@ func (s *Service) CreateMessage(ctx context.Context, conversationID, senderID, c
 		return "", ErrNoActiveMatch
 	}
 
-	return s.Repository.CreateMessage(ctx, conversationID, senderID, content)
-}
+	messageID, err := s.Repository.CreateMessage(ctx, conversationID, senderID, content)
+	if err != nil {
+		return "", err
+	}
 
-func validateUUIDs(ids ...string) error {
-	for _, id := range ids {
-		if _, err := uuid.Parse(id); err != nil {
-			return ErrInvalidUUID
+	recipientID := user1ID
+	if senderID == user1ID {
+		recipientID = user2ID
+	}
+
+	if s.Notifier != nil {
+		if err := s.Notifier.NotifyMessageReceived(ctx, recipientID, conversationID, senderID, content); err != nil {
+			log.Printf("failed to notify about message %s: %v", messageID, err)
 		}
 	}
 
-	return nil
+	return messageID, nil
 }
 
 func (s *Service) GetConversationHistoryByID(ctx context.Context, conversationID, userID string) ([]Message, error) {
@@ -143,4 +151,14 @@ func (s *Service) GetConversationHistoryByID(ctx context.Context, conversationID
 	}
 
 	return s.Repository.GetMessagesByConversationID(ctx, conversationID)
+}
+
+func validateUUIDs(ids ...string) error {
+	for _, id := range ids {
+		if _, err := uuid.Parse(id); err != nil {
+			return ErrInvalidUUID
+		}
+	}
+
+	return nil
 }
