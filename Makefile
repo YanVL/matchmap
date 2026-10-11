@@ -1,4 +1,4 @@
-.PHONY: dev down migrate-up migrate-force
+.PHONY: dev down migrate-up migrate-force seed test test-race test-all test-race-all format
 
 dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
@@ -15,8 +15,11 @@ migrate-force:
 seed:
 	docker compose exec db psql -U matchmap -d matchmap -f /seeds/dev.sql
 
-test:
-	go test ./internal/match -v
+test-all:
+	go test ./...
 
-test-race:
-	go test ./internal/match -race -v
+test-race-all:
+	go test -race ./...
+
+format:
+	go fmt ./...

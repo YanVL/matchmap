@@ -6,11 +6,13 @@ import (
 	"fmt"
 	"log"
 	"matchmap/internal/location"
+	"sync"
 
 	"github.com/coder/websocket/wsjson"
 )
 
 type Hub struct {
+	mu      sync.RWMutex
 	Clients map[string]*Client
 	Nearby  map[string][]string
 	Ctx     context.Context
@@ -25,9 +27,12 @@ func NewHub(ctx context.Context) *Hub {
 }
 
 func (h *Hub) Register(client *Client) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
 	h.Clients[client.UserID] = client
 
-	nearbyUsers := h.FindNearbyUsers(client, 1000)
+	nearbyUsers := h.FindNearbyUsersLocked(client, 1000)
 	h.Nearby[client.UserID] = nearbyUsers
 
 	log.Printf("User %s connected. Nearby users: %v", client.UserID, nearbyUsers)
@@ -35,8 +40,26 @@ func (h *Hub) Register(client *Client) {
 
 func (h *Hub) Unregister(client *Client) {
 
-	for _, nearbyUserID := range h.Nearby[client.UserID] {
+	h.mu.Lock()
+
+	currentClient, exists := h.Clients[client.UserID]
+	if !exists || currentClient != client {
+		h.mu.Unlock()
+		return
+	}
+
+	nearbyUsersIDs := append([]string(nil), h.Nearby[client.UserID]...)
+
+	delete(h.Clients, client.UserID)
+	delete(h.Nearby, client.UserID)
+
+	h.mu.Unlock()
+
+	for _, nearbyUserID := range nearbyUsersIDs {
+		h.mu.RLock()
 		otherClient, exists := h.Clients[nearbyUserID]
+		h.mu.RUnlock()
+
 		if !exists {
 			continue
 		}
@@ -61,9 +84,6 @@ func (h *Hub) Unregister(client *Client) {
 			log.Printf("failed to notify user %s about %s leaving: %v", nearbyUserID, client.UserID, err)
 		}
 	}
-
-	delete(h.Clients, client.UserID)
-	delete(h.Nearby, client.UserID)
 }
 
 func (h *Hub) Broadcast(ctx context.Context, message Message) {
@@ -79,6 +99,13 @@ func (h *Hub) Broadcast(ctx context.Context, message Message) {
 }
 
 func (h *Hub) FindNearbyUsers(client *Client, radius float64) []string {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	return h.FindNearbyUsersLocked(client, radius)
+}
+
+func (h *Hub) FindNearbyUsersLocked(client *Client, radius float64) []string {
 	var nearbyUserIDs []string
 
 	for _, otherClient := range h.Clients {
@@ -382,4 +409,34 @@ func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matc
 	}
 
 	return wsjson.Write(ctx, otherClient.Conn, event)
+}
+
+func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversationID, senderID, message string) error {
+
+	otherClient, exists := h.Clients[recipientID]
+
+	if !exists {
+		return nil
+	}
+
+	payload, err := json.Marshal(PrivateMessageNotification{
+		ConversationID: conversationID,
+		SenderID:       senderID,
+		Content:        message,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal message notification: %v", err)
+	}
+
+	event := Event{
+		Type:    "message_received",
+		Payload: payload,
+	}
+
+	err = wsjson.Write(ctx, otherClient.Conn, event)
+	if err != nil {
+		log.Printf("failed to notify user %s about new message from %s: %v", otherClient.UserID, senderID, err)
+	}
+
+	return err
 }

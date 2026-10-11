@@ -1,0 +1,164 @@
+package chat
+
+import (
+	"context"
+	"errors"
+	"log"
+	"strings"
+
+	"github.com/google/uuid"
+	"github.com/jackc/pgx/v5"
+)
+
+type Service struct {
+	Repository *Repository
+	Notifier   Notifier
+}
+
+var ErrUserNotInConversation = errors.New("user is not part of the conversation")
+var ErrNoActiveMatch = errors.New("users do not have an active match")
+var ErrEmptyMessage = errors.New("message content is empty")
+var ErrMessageTooLong = errors.New("message content is too long")
+var ErrUserIDRequired = errors.New("user ID is required")
+var ErrSameUser = errors.New("users cannot be the same")
+var ErrMessageIDsRequired = errors.New("conversation_id and sender_id are required")
+var ErrInvalidUUID = errors.New("invalid UUID format")
+var ErrConversationDoesNotExist = errors.New("conversation does not exist")
+
+func (s *Service) GetOrCreateConversation(ctx context.Context, user1ID, user2ID string) (string, error) {
+
+	if user1ID == "" || user2ID == "" {
+		return "", ErrUserIDRequired
+	}
+
+	if user1ID == user2ID {
+		return "", ErrSameUser
+	}
+
+	if err := validateUUIDs(user1ID, user2ID); err != nil {
+		return "", err
+	}
+
+	hasActiveMatch, err := s.Repository.HasActiveMatch(ctx, user1ID, user2ID)
+
+	if err != nil {
+		return "", err
+	}
+
+	if !hasActiveMatch {
+		return "", ErrNoActiveMatch
+	}
+
+	conversationID, err := s.Repository.GetConversationByUsers(ctx, user1ID, user2ID)
+
+	if err == nil {
+		return conversationID, nil
+	}
+
+	if !errors.Is(err, pgx.ErrNoRows) {
+		return "", err
+	}
+
+	newConversationID, err := s.Repository.CreateConversation(ctx, user1ID, user2ID)
+	if err == nil {
+		return newConversationID, nil
+	}
+
+	if !errors.Is(err, ErrConversationConflict) {
+		return "", err
+	}
+
+	return s.Repository.GetConversationByUsers(ctx, user1ID, user2ID)
+}
+
+func (s *Service) CreateMessage(ctx context.Context, conversationID, senderID, content string) (string, error) {
+
+	if conversationID == "" || senderID == "" {
+		return "", ErrMessageIDsRequired
+	}
+
+	if strings.TrimSpace(content) == "" {
+		return "", ErrEmptyMessage
+	}
+
+	if err := validateUUIDs(conversationID, senderID); err != nil {
+		return "", err
+	}
+
+	if len([]rune(content)) > 1000 {
+		return "", ErrMessageTooLong
+	}
+
+	user1ID, user2ID, err := s.Repository.GetConversationByID(ctx, conversationID)
+
+	if err != nil {
+		return "", err
+	}
+
+	if senderID != user1ID && senderID != user2ID {
+		return "", ErrUserNotInConversation
+	}
+
+	hasActiveMatch, err := s.Repository.HasActiveMatch(ctx, user1ID, user2ID)
+
+	if err != nil {
+		return "", err
+	}
+
+	if !hasActiveMatch {
+		return "", ErrNoActiveMatch
+	}
+
+	messageID, err := s.Repository.CreateMessage(ctx, conversationID, senderID, content)
+	if err != nil {
+		return "", err
+	}
+
+	recipientID := user1ID
+	if senderID == user1ID {
+		recipientID = user2ID
+	}
+
+	if s.Notifier != nil {
+		if err := s.Notifier.NotifyMessageReceived(ctx, recipientID, conversationID, senderID, content); err != nil {
+			log.Printf("failed to notify about message %s: %v", messageID, err)
+		}
+	}
+
+	return messageID, nil
+}
+
+func (s *Service) GetConversationHistoryByID(ctx context.Context, conversationID, userID string) ([]Message, error) {
+	if conversationID == "" || userID == "" {
+		return nil, ErrMessageIDsRequired
+	}
+
+	if err := validateUUIDs(conversationID, userID); err != nil {
+		return nil, err
+	}
+
+	user1ID, user2ID, err := s.Repository.GetConversationByID(ctx, conversationID)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrConversationDoesNotExist
+		}
+		return nil, err
+	}
+
+	if userID != user1ID && userID != user2ID {
+		return nil, ErrConversationDoesNotExist
+	}
+
+	return s.Repository.GetMessagesByConversationID(ctx, conversationID)
+}
+
+func validateUUIDs(ids ...string) error {
+	for _, id := range ids {
+		if _, err := uuid.Parse(id); err != nil {
+			return ErrInvalidUUID
+		}
+	}
+
+	return nil
+}

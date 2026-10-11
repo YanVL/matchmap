@@ -17,8 +17,8 @@ type CreateUserRequest struct {
 }
 
 type User struct {
-	ID string `json:"id"`
-	Name string `json:"name"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
 	CreatedAt time.Time `json:"created_at"`
 }
 
@@ -45,7 +45,6 @@ func (h Handler) CreateUser(w http.ResponseWriter, r *http.Request) {
 		RETURNING id, name, created_at
 		`,
 		input.Username,
-
 	).Scan(
 		&user.ID,
 		&user.Name,

@@ -7,11 +7,12 @@ import (
 	"net/http"
 	"os"
 
+	"matchmap/internal/chat"
 	"matchmap/internal/database"
 	"matchmap/internal/location"
+	"matchmap/internal/match"
 	"matchmap/internal/users"
 	"matchmap/internal/websocket"
-	"matchmap/internal/match"
 )
 
 func main() {
@@ -53,6 +54,17 @@ func main() {
 		Service: &matchService,
 	}
 
+	chatRepo := chat.Repository{
+		DB: db,
+	}
+	chatService := chat.Service{
+		Repository: &chatRepo,
+		Notifier:   hub,
+	}
+	chatHandler := chat.Handler{
+		Service: &chatService,
+	}
+
 	mux := http.NewServeMux()
 
 	mux.HandleFunc("GET /health", func(w http.ResponseWriter, r *http.Request) {
@@ -72,6 +84,9 @@ func main() {
 	mux.HandleFunc("POST /match/finish", matchHandler.FinishMatch)
 	mux.HandleFunc("POST /match/result", matchHandler.RecordMatchResult)
 	mux.HandleFunc("GET /match/stats", matchHandler.GetUserMatchStats)
+	mux.HandleFunc("GET /chat/conversation", chatHandler.GetOrCreateConversation)
+	mux.HandleFunc("POST /chat/message", chatHandler.CreateMessage)
+	mux.HandleFunc("GET /chat/messages", chatHandler.GetConversationHistory)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {
