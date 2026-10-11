@@ -14,13 +14,14 @@ type Service struct {
 }
 
 var ErrUserNotInConversation = errors.New("user is not part of the conversation")
-var ErrNoActiveMatch = errors.New("users do not have an active match or neither are friends")
+var ErrNoActiveMatch = errors.New("users do not have an active match")
 var ErrEmptyMessage = errors.New("message content is empty")
 var ErrMessageTooLong = errors.New("message content is too long")
 var ErrUserIDRequired = errors.New("user ID is required")
 var ErrSameUser = errors.New("users cannot be the same")
 var ErrMessageIDsRequired = errors.New("conversation_id and sender_id are required")
 var ErrInvalidUUID = errors.New("invalid UUID format")
+var ErrConversationDoesNotExist = errors.New("conversation does not exist")
 
 func (s *Service) GetOrCreateConversation(ctx context.Context, user1ID, user2ID string) (string, error) {
 
@@ -117,4 +118,29 @@ func validateUUIDs(ids ...string) error {
 	}
 
 	return nil
+}
+
+func (s *Service) GetConversationHistoryByID(ctx context.Context, conversationID, userID string) ([]Message, error) {
+	if conversationID == "" || userID == "" {
+		return nil, ErrMessageIDsRequired
+	}
+
+	if err := validateUUIDs(conversationID, userID); err != nil {
+		return nil, err
+	}
+
+	user1ID, user2ID, err := s.Repository.GetConversationByID(ctx, conversationID)
+
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return nil, ErrConversationDoesNotExist
+		}
+		return nil, err
+	}
+
+	if userID != user1ID && userID != user2ID {
+		return nil, ErrConversationDoesNotExist
+	}
+
+	return s.Repository.GetMessagesByConversationID(ctx, conversationID)
 }

@@ -10,6 +10,11 @@ type Handler struct {
 	Service *Service
 }
 
+const (
+	ContentTypeHeader = "Content-Type"
+	ApplicationJSON   = "application/json"
+)
+
 func (h *Handler) GetOrCreateConversation(w http.ResponseWriter, r *http.Request) {
 	user1ID := r.URL.Query().Get("user1_id")
 	user2ID := r.URL.Query().Get("user2_id")
@@ -24,6 +29,8 @@ func (h *Handler) GetOrCreateConversation(w http.ResponseWriter, r *http.Request
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, ErrSameUser):
 			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, ErrInvalidUUID):
+			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, ErrNoActiveMatch):
 			http.Error(w, err.Error(), http.StatusConflict)
 		default:
@@ -32,7 +39,7 @@ func (h *Handler) GetOrCreateConversation(w http.ResponseWriter, r *http.Request
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(ContentTypeHeader, ApplicationJSON)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
 		"conversation_id": conversationID,
@@ -54,6 +61,8 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, ErrMessageTooLong):
 			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, ErrInvalidUUID):
+			http.Error(w, err.Error(), http.StatusBadRequest)
 		case errors.Is(err, ErrUserNotInConversation):
 			http.Error(w, err.Error(), http.StatusNotFound)
 		case errors.Is(err, ErrNoActiveMatch):
@@ -64,9 +73,36 @@ func (h *Handler) CreateMessage(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
+	w.Header().Set(ContentTypeHeader, ApplicationJSON)
 	w.WriteHeader(http.StatusCreated)
 	json.NewEncoder(w).Encode(map[string]string{
 		"message_id": messageID,
 	})
+}
+
+func (h *Handler) GetConversationHistory(w http.ResponseWriter, r *http.Request) {
+	conversationID := r.URL.Query().Get("conversation_id")
+	userID := r.URL.Query().Get("user_id")
+
+	messages, err := h.Service.GetConversationHistoryByID(r.Context(), conversationID, userID)
+
+	if err != nil {
+		switch {
+		case errors.Is(err, ErrInvalidUUID):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, ErrMessageIDsRequired):
+			http.Error(w, err.Error(), http.StatusBadRequest)
+		case errors.Is(err, ErrConversationDoesNotExist):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		case errors.Is(err, ErrUserNotInConversation):
+			http.Error(w, err.Error(), http.StatusNotFound)
+		default:
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+		}
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(messages)
 }

@@ -3,6 +3,7 @@ package chat
 import (
 	"context"
 	"errors"
+	"time"
 
 	"github.com/jackc/pgx/v5/pgconn"
 	"github.com/jackc/pgx/v5/pgxpool"
@@ -101,4 +102,44 @@ func (r *Repository) HasActiveMatch(ctx context.Context, user1ID, user2ID string
 		return false, err
 	}
 	return exists, nil
+}
+
+type Message struct {
+	ID             string    `json:"id"`
+	ConversationID string    `json:"conversation_id"`
+	SenderID       string    `json:"sender_id"`
+	Content        string    `json:"content"`
+	CreatedAt      time.Time `json:"created_at"`
+}
+
+func (r *Repository) GetMessagesByConversationID(ctx context.Context, conversationID string) ([]Message, error) {
+	query := `
+		SELECT id, conversation_id, sender_id, content, created_at
+		FROM messages
+		WHERE conversation_id = $1
+		ORDER BY created_at ASC
+	`
+
+	rows, err := r.DB.Query(ctx, query, conversationID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	messages := make([]Message, 0)
+
+	for rows.Next() {
+		var msg Message
+		err := rows.Scan(&msg.ID, &msg.ConversationID, &msg.SenderID, &msg.Content, &msg.CreatedAt)
+		if err != nil {
+			return nil, err
+		}
+		messages = append(messages, msg)
+	}
+
+	if rows.Err() != nil {
+		return nil, rows.Err()
+	}
+
+	return messages, nil
 }

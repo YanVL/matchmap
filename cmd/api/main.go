@@ -85,6 +85,7 @@ func main() {
 	mux.HandleFunc("GET /match/stats", matchHandler.GetUserMatchStats)
 	mux.HandleFunc("GET /chat/conversation", chatHandler.GetOrCreateConversation)
 	mux.HandleFunc("POST /chat/message", chatHandler.CreateMessage)
+	mux.HandleFunc("GET /chat/messages", chatHandler.GetConversationHistory)
 
 	port := os.Getenv("APP_PORT")
 	if port == "" {
