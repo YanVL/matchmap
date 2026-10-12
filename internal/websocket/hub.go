@@ -32,7 +32,7 @@ func (h *Hub) Register(client *Client) {
 
 	h.Clients[client.UserID] = client
 
-	nearbyUsers := h.FindNearbyUsersLocked(client, 1000)
+	nearbyUsers := h.findNearbyUsersLocked(client, 1000)
 	h.Nearby[client.UserID] = nearbyUsers
 
 	log.Printf("User %s connected. Nearby users: %v", client.UserID, nearbyUsers)
@@ -113,10 +113,10 @@ func (h *Hub) FindNearbyUsers(client *Client, radius float64) []string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	return h.FindNearbyUsersLocked(client, radius)
+	return h.findNearbyUsersLocked(client, radius)
 }
 
-func (h *Hub) FindNearbyUsersLocked(client *Client, radius float64) []string {
+func (h *Hub) findNearbyUsersLocked(client *Client, radius float64) []string {
 	var nearbyUserIDs []string
 
 	for _, otherClient := range h.Clients {
@@ -133,9 +133,12 @@ func (h *Hub) FindNearbyUsersLocked(client *Client, radius float64) []string {
 }
 
 func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius float64) {
-	nearbyUsers := h.FindNearbyUsers(client, radius)
 
-	newNearby, noLongerNearby, stillNearby := h.CompareNearbyUsers(client, nearbyUsers)
+	h.mu.Lock()
+
+	nearbyUsers := h.findNearbyUsersLocked(client, radius)
+
+	newNearby, noLongerNearby, stillNearby := h.compareNearbyUsersLocked(client, nearbyUsers)
 
 	h.Nearby[client.UserID] = nearbyUsers
 
@@ -144,8 +147,10 @@ func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius floa
 			continue
 		}
 
-		h.Nearby[otherClient.UserID] = h.FindNearbyUsers(otherClient, radius)
+		h.Nearby[otherClient.UserID] = h.findNearbyUsersLocked(otherClient, radius)
 	}
+
+	h.mu.Unlock()
 
 	h.NotifyNearbyUsers(ctx, client, newNearby)
 	h.notifyUsersLeft(ctx, client, noLongerNearby)
@@ -155,6 +160,13 @@ func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius floa
 }
 
 func (h *Hub) CompareNearbyUsers(client *Client, nearbyUsers []string) (newNearby []string, noLongerNearby []string, stillNearby []string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	return h.compareNearbyUsersLocked(client, nearbyUsers)
+}
+
+func (h *Hub) compareNearbyUsersLocked(client *Client, nearbyUsers []string) (newNearby []string, noLongerNearby []string, stillNearby []string) {
 	previousNearby := h.Nearby[client.UserID]
 	updatedNearby := nearbyUsers
 	stillNearby = make([]string, 0)
