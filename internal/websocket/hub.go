@@ -87,7 +87,18 @@ func (h *Hub) Unregister(client *Client) {
 }
 
 func (h *Hub) Broadcast(ctx context.Context, message Message) {
+
+	h.mu.RLock()
+
+	clients := make([]*Client, 0, len(h.Clients))
+
 	for _, client := range h.Clients {
+		clients = append(clients, client)
+	}
+
+	h.mu.RUnlock()
+
+	for _, client := range clients {
 
 		log.Printf("sending message to client %s: %+v", client.UserID, message)
 
