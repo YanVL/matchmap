@@ -46,10 +46,10 @@ func (h *Handler) handleLocationUpdate(ctx context.Context, client *Client, even
 		return
 	}
 
-	client.Location = location.Coordinates{
+	h.Hub.UpdateClientLocation(client, location.Coordinates{
 		Latitude:  locationUpdate.Latitude,
 		Longitude: locationUpdate.Longitude,
-	}
+	})
 
 	err = h.LocationService.UpdateLocation(ctx, client.UserID, locationUpdate.Latitude, locationUpdate.Longitude)
 	if err != nil {

@@ -32,7 +32,7 @@ func (h *Hub) Register(client *Client) {
 
 	h.Clients[client.UserID] = client
 
-	nearbyUsers := h.FindNearbyUsersLocked(client, 1000)
+	nearbyUsers := h.findNearbyUsersLocked(client, 1000)
 	h.Nearby[client.UserID] = nearbyUsers
 
 	log.Printf("User %s connected. Nearby users: %v", client.UserID, nearbyUsers)
@@ -87,7 +87,18 @@ func (h *Hub) Unregister(client *Client) {
 }
 
 func (h *Hub) Broadcast(ctx context.Context, message Message) {
+
+	h.mu.RLock()
+
+	clients := make([]*Client, 0, len(h.Clients))
+
 	for _, client := range h.Clients {
+		clients = append(clients, client)
+	}
+
+	h.mu.RUnlock()
+
+	for _, client := range clients {
 
 		log.Printf("sending message to client %s: %+v", client.UserID, message)
 
@@ -102,10 +113,10 @@ func (h *Hub) FindNearbyUsers(client *Client, radius float64) []string {
 	h.mu.RLock()
 	defer h.mu.RUnlock()
 
-	return h.FindNearbyUsersLocked(client, radius)
+	return h.findNearbyUsersLocked(client, radius)
 }
 
-func (h *Hub) FindNearbyUsersLocked(client *Client, radius float64) []string {
+func (h *Hub) findNearbyUsersLocked(client *Client, radius float64) []string {
 	var nearbyUserIDs []string
 
 	for _, otherClient := range h.Clients {
@@ -121,10 +132,20 @@ func (h *Hub) FindNearbyUsersLocked(client *Client, radius float64) []string {
 	return nearbyUserIDs
 }
 
-func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius float64) {
-	nearbyUsers := h.FindNearbyUsers(client, radius)
+func (h *Hub) UpdateClientLocation(client *Client, coordinates location.Coordinates) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
 
-	newNearby, noLongerNearby, stillNearby := h.CompareNearbyUsers(client, nearbyUsers)
+	client.Location = coordinates
+}
+
+func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius float64) {
+
+	h.mu.Lock()
+
+	nearbyUsers := h.findNearbyUsersLocked(client, radius)
+
+	newNearby, noLongerNearby, stillNearby := h.compareNearbyUsersLocked(client, nearbyUsers)
 
 	h.Nearby[client.UserID] = nearbyUsers
 
@@ -133,8 +154,10 @@ func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius floa
 			continue
 		}
 
-		h.Nearby[otherClient.UserID] = h.FindNearbyUsers(otherClient, radius)
+		h.Nearby[otherClient.UserID] = h.findNearbyUsersLocked(otherClient, radius)
 	}
+
+	h.mu.Unlock()
 
 	h.NotifyNearbyUsers(ctx, client, newNearby)
 	h.notifyUsersLeft(ctx, client, noLongerNearby)
@@ -144,6 +167,13 @@ func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius floa
 }
 
 func (h *Hub) CompareNearbyUsers(client *Client, nearbyUsers []string) (newNearby []string, noLongerNearby []string, stillNearby []string) {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	return h.compareNearbyUsersLocked(client, nearbyUsers)
+}
+
+func (h *Hub) compareNearbyUsersLocked(client *Client, nearbyUsers []string) (newNearby []string, noLongerNearby []string, stillNearby []string) {
 	previousNearby := h.Nearby[client.UserID]
 	updatedNearby := nearbyUsers
 	stillNearby = make([]string, 0)
@@ -180,16 +210,23 @@ func (h *Hub) CompareNearbyUsers(client *Client, nearbyUsers []string) (newNearb
 }
 
 func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby []string) {
+
 	for _, userID := range newNearby {
+
+		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
+		coordinates := client.Location
+
+		h.mu.RUnlock()
+
 		if !exists {
 			continue
 		}
 
 		notification := NearbyUserNotification{
 			UserID:    client.UserID,
-			Latitude:  client.Location.Latitude,
-			Longitude: client.Location.Longitude,
+			Latitude:  coordinates.Latitude,
+			Longitude: coordinates.Longitude,
 		}
 
 		payload, err := json.Marshal(notification)
@@ -219,8 +256,13 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 }
 
 func (h *Hub) notifyUsersLeft(ctx context.Context, client *Client, noLongerNearbyUsers []string) {
+
 	for _, userID := range noLongerNearbyUsers {
+
+		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
+		h.mu.RUnlock()
+
 		if !exists {
 			continue
 		}
@@ -256,8 +298,13 @@ func (h *Hub) notifyUsersLeft(ctx context.Context, client *Client, noLongerNearb
 }
 
 func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNearby []string) {
+
 	for _, userID := range stillNearby {
+
+		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
+		h.mu.RUnlock()
+
 		if !exists {
 			continue
 		}
@@ -295,7 +342,10 @@ func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNea
 }
 
 func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID string, inviteID string) error {
+
+	h.mu.RLock()
 	otherClient, exists := h.Clients[userID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -318,7 +368,10 @@ func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID s
 }
 
 func (h *Hub) NotifyMatchAccepted(ctx context.Context, userID, opponentID, matchID string) error {
+
+	h.mu.RLock()
 	otherClient, exists := h.Clients[userID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -343,7 +396,9 @@ func (h *Hub) NotifyMatchAccepted(ctx context.Context, userID, opponentID, match
 
 func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) error {
 
+	h.mu.RLock()
 	otherClient, exists := h.Clients[userID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -366,7 +421,10 @@ func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) 
 }
 
 func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, matchID string) error {
+
+	h.mu.RLock()
 	otherClient, exists := h.Clients[userID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -388,7 +446,10 @@ func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, match
 }
 
 func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matchID, matchResult string) error {
+
+	h.mu.RLock()
 	otherClient, exists := h.Clients[recipientID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -413,7 +474,9 @@ func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matc
 
 func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversationID, senderID, message string) error {
 
+	h.mu.RLock()
 	otherClient, exists := h.Clients[recipientID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
