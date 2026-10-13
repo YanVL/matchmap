@@ -132,6 +132,13 @@ func (h *Hub) findNearbyUsersLocked(client *Client, radius float64) []string {
 	return nearbyUserIDs
 }
 
+func (h *Hub) UpdateClientLocation(client *Client, coordinates location.Coordinates) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+
+	client.Location = coordinates
+}
+
 func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius float64) {
 
 	h.mu.Lock()
@@ -208,6 +215,8 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 
 		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
+		coordinates := client.Location
+
 		h.mu.RUnlock()
 
 		if !exists {
@@ -216,8 +225,8 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 
 		notification := NearbyUserNotification{
 			UserID:    client.UserID,
-			Latitude:  client.Location.Latitude,
-			Longitude: client.Location.Longitude,
+			Latitude:  coordinates.Latitude,
+			Longitude: coordinates.Longitude,
 		}
 
 		payload, err := json.Marshal(notification)
@@ -249,7 +258,7 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 func (h *Hub) notifyUsersLeft(ctx context.Context, client *Client, noLongerNearbyUsers []string) {
 
 	for _, userID := range noLongerNearbyUsers {
-		
+
 		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
 		h.mu.RUnlock()
