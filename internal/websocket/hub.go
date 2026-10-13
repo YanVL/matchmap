@@ -203,8 +203,13 @@ func (h *Hub) compareNearbyUsersLocked(client *Client, nearbyUsers []string) (ne
 }
 
 func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby []string) {
+
 	for _, userID := range newNearby {
+
+		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
+		h.mu.RUnlock()
+
 		if !exists {
 			continue
 		}
@@ -242,8 +247,13 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 }
 
 func (h *Hub) notifyUsersLeft(ctx context.Context, client *Client, noLongerNearbyUsers []string) {
+
 	for _, userID := range noLongerNearbyUsers {
+		
+		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
+		h.mu.RUnlock()
+
 		if !exists {
 			continue
 		}
@@ -279,8 +289,13 @@ func (h *Hub) notifyUsersLeft(ctx context.Context, client *Client, noLongerNearb
 }
 
 func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNearby []string) {
+
 	for _, userID := range stillNearby {
+
+		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
+		h.mu.RUnlock()
+
 		if !exists {
 			continue
 		}
@@ -318,7 +333,10 @@ func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNea
 }
 
 func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID string, inviteID string) error {
+
+	h.mu.RLock()
 	otherClient, exists := h.Clients[userID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -341,7 +359,10 @@ func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID s
 }
 
 func (h *Hub) NotifyMatchAccepted(ctx context.Context, userID, opponentID, matchID string) error {
+
+	h.mu.RLock()
 	otherClient, exists := h.Clients[userID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -366,7 +387,9 @@ func (h *Hub) NotifyMatchAccepted(ctx context.Context, userID, opponentID, match
 
 func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) error {
 
+	h.mu.RLock()
 	otherClient, exists := h.Clients[userID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -389,7 +412,10 @@ func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) 
 }
 
 func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, matchID string) error {
+
+	h.mu.RLock()
 	otherClient, exists := h.Clients[userID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -411,7 +437,10 @@ func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, match
 }
 
 func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matchID, matchResult string) error {
+
+	h.mu.RLock()
 	otherClient, exists := h.Clients[recipientID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
@@ -436,7 +465,9 @@ func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matc
 
 func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversationID, senderID, message string) error {
 
+	h.mu.RLock()
 	otherClient, exists := h.Clients[recipientID]
+	h.mu.RUnlock()
 
 	if !exists {
 		return nil
