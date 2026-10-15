@@ -4,6 +4,8 @@ import (
 	"encoding/json"
 	"errors"
 	"net/http"
+
+	"github.com/google/uuid"
 )
 
 type Handler struct {
@@ -15,6 +17,21 @@ const (
 	headerContentType = "Content-Type"
 	contentTypeJSON   = "application/json"
 )
+
+var (
+	ErrInvalidUUID    = errors.New("invalid UUID format")
+	ErrRequiredFields = errors.New("required fields are missing")
+)
+
+func validateUUIDs(ids ...string) error {
+	for _, id := range ids {
+		if _, err := uuid.Parse(id); err != nil {
+			return ErrInvalidUUID
+		}
+	}
+
+	return nil
+}
 
 func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 	sender := r.URL.Query().Get("sender")
@@ -42,7 +59,18 @@ func (h *Handler) CreateInvite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetPendingInvites(w http.ResponseWriter, r *http.Request) {
+
+	if r.URL.Query().Get("user_id") == "" {
+		http.Error(w, ErrRequiredFields.Error(), http.StatusBadRequest)
+		return
+	}
+
 	userID := r.URL.Query().Get("user_id")
+
+	if err := validateUUIDs(userID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	invites, err := h.Service.GetPendingInvites(r.Context(), userID)
 
@@ -60,7 +88,18 @@ func (h *Handler) GetPendingInvites(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
+
+	if r.URL.Query().Get("invite_id") == "" {
+		http.Error(w, ErrRequiredFields.Error(), http.StatusBadRequest)
+		return
+	}
+
 	inviteID := r.URL.Query().Get("invite_id")
+
+	if err := validateUUIDs(inviteID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	err := h.Service.AcceptInvite(r.Context(), inviteID)
 	if err != nil {
@@ -80,7 +119,18 @@ func (h *Handler) AcceptInvite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RejectInvite(w http.ResponseWriter, r *http.Request) {
+
+	if r.URL.Query().Get("invite_id") == "" {
+		http.Error(w, ErrRequiredFields.Error(), http.StatusBadRequest)
+		return
+	}
+
 	inviteID := r.URL.Query().Get("invite_id")
+
+	if err := validateUUIDs(inviteID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	err := h.Service.RejectInvite(r.Context(), inviteID)
 	if err != nil {
@@ -98,8 +148,19 @@ func (h *Handler) RejectInvite(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) FinishMatch(w http.ResponseWriter, r *http.Request) {
+
+	if r.URL.Query().Get("match_id") == "" || r.URL.Query().Get("user_id") == "" {
+		http.Error(w, ErrRequiredFields.Error(), http.StatusBadRequest)
+		return
+	}
+
 	matchID := r.URL.Query().Get("match_id")
 	userID := r.URL.Query().Get("user_id")
+
+	if err := validateUUIDs(matchID, userID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	err := h.Service.FinishMatch(r.Context(), matchID, userID)
 	if err != nil {
@@ -117,9 +178,20 @@ func (h *Handler) FinishMatch(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) RecordMatchResult(w http.ResponseWriter, r *http.Request) {
+
+	if r.URL.Query().Get("match_id") == "" || r.URL.Query().Get("user_id") == "" || r.URL.Query().Get("result") == "" {
+		http.Error(w, ErrRequiredFields.Error(), http.StatusBadRequest)
+		return
+	}
+
 	matchID := r.URL.Query().Get("match_id")
 	userID := r.URL.Query().Get("user_id")
 	result := r.URL.Query().Get("result")
+
+	if err := validateUUIDs(matchID, userID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	err := h.Service.RecordMatchResult(r.Context(), matchID, userID, result)
 	if err != nil {
@@ -143,7 +215,18 @@ func (h *Handler) RecordMatchResult(w http.ResponseWriter, r *http.Request) {
 }
 
 func (h *Handler) GetUserMatchStats(w http.ResponseWriter, r *http.Request) {
+
+	if r.URL.Query().Get("user_id") == "" {
+		http.Error(w, ErrRequiredFields.Error(), http.StatusBadRequest)
+		return
+	}
+
 	userID := r.URL.Query().Get("user_id")
+
+	if err := validateUUIDs(userID); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
 
 	stats, err := h.Service.GetUserMatchStats(r.Context(), userID)
 	if err != nil {

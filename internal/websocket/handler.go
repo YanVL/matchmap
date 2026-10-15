@@ -162,5 +162,4 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	h.startHeartbeat(ctx, cancel, client)
 
 	h.readLoop(ctx, cancel, client)
-
 }

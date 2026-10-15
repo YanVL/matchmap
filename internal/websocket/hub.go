@@ -496,7 +496,7 @@ func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversati
 		Content:        message,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to marshal message notification: %v", err)
+		return fmt.Errorf("failed to marshal message notification: %w", err)
 	}
 
 	event := Event{
@@ -504,10 +504,5 @@ func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversati
 		Payload: payload,
 	}
 
-	err = wsjson.Write(ctx, otherClient.Conn, event)
-	if err != nil {
-		log.Printf("failed to notify user %s about new message from %s: %v", otherClient.UserID, senderID, err)
-	}
-
-	return err
+	return wsjson.Write(ctx, otherClient.Conn, event)
 }
