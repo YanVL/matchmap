@@ -144,7 +144,7 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 	log.Printf(
 		"client connected: user_id=%s active_clients=%d connection=%p",
 		client.UserID,
-		len(h.Hub.Clients),
+		h.Hub.ClientCount(),
 		conn,
 	)
 
