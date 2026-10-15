@@ -3,6 +3,7 @@ package match
 import (
 	"context"
 	"errors"
+	"log"
 )
 
 var (
@@ -45,7 +46,9 @@ func (s *Service) CreateInvite(ctx context.Context, sender, receiver string) (st
 		return "", err
 	}
 
-	_ = s.Notifier.NotifyInviteCreated(ctx, receiver, sender, inviteID)
+	if err := s.Notifier.NotifyInviteCreated(ctx, receiver, sender, inviteID); err != nil {
+		log.Printf("failed to notify invite created: %v", err)
+	}
 
 	return inviteID, nil
 }
@@ -72,8 +75,13 @@ func (s *Service) AcceptInvite(ctx context.Context, inviteID string) error {
 		return err
 	}
 
-	_ = s.Notifier.NotifyMatchAccepted(ctx, userID, opponentID, matchID)
-	_ = s.Notifier.NotifyMatchAccepted(ctx, opponentID, userID, matchID)
+	if err := s.Notifier.NotifyMatchAccepted(ctx, userID, opponentID, matchID); err != nil {
+		log.Printf("failed to notify match accepted: %v", err)
+	}
+
+	if err := s.Notifier.NotifyMatchAccepted(ctx, opponentID, userID, matchID); err != nil {
+		log.Printf("failed to notify match accepted: %v", err)
+	}
 	return nil
 }
 
@@ -83,7 +91,9 @@ func (s *Service) RejectInvite(ctx context.Context, inviteID string) error {
 		return err
 	}
 
-	_ = s.Notifier.NotifyMatchRejected(ctx, senderID, inviteID)
+	if err := s.Notifier.NotifyMatchRejected(ctx, senderID, inviteID); err != nil {
+		log.Printf("failed to notify match rejected: %v", err)
+	}
 	return nil
 }
 
@@ -94,8 +104,13 @@ func (s *Service) FinishMatch(ctx context.Context, matchID, userID string) error
 	}
 
 	if bothFinished {
-		_ = s.Notifier.NotifyMatchFinished(ctx, userID, otherPlayerID, matchID)
-		_ = s.Notifier.NotifyMatchFinished(ctx, otherPlayerID, userID, matchID)
+		if err := s.Notifier.NotifyMatchFinished(ctx, userID, otherPlayerID, matchID); err != nil {
+			log.Printf("failed to notify match finished: %v", err)
+		}
+
+		if err := s.Notifier.NotifyMatchFinished(ctx, otherPlayerID, userID, matchID); err != nil {
+			log.Printf("failed to notify match finished: %v", err)
+		}
 	}
 
 	return nil
@@ -125,8 +140,13 @@ func (s *Service) RecordMatchResult(ctx context.Context, matchID, userID, matchR
 		return err
 	}
 
-	_ = s.Notifier.NotifyMatchResult(ctx, userID, userID, matchID, matchResult)
-	_ = s.Notifier.NotifyMatchResult(ctx, otherPlayerID, userID, matchID, matchResult)
+	if err := s.Notifier.NotifyMatchResult(ctx, userID, userID, matchID, matchResult); err != nil {
+		log.Printf("failed to notify match result: %v", err)
+	}
+
+	if err := s.Notifier.NotifyMatchResult(ctx, otherPlayerID, userID, matchID, matchResult); err != nil {
+		log.Printf("failed to notify match result: %v", err)
+	}
 
 	return nil
 }

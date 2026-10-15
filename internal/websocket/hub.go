@@ -209,6 +209,14 @@ func (h *Hub) compareNearbyUsersLocked(client *Client, nearbyUsers []string) (ne
 	return newNearby, noLongerNearby, stillNearby
 }
 
+func (h *Hub) ClientCount() int {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	return len(h.Clients)
+}
+
+// Notification functions
 func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby []string) {
 
 	for _, userID := range newNearby {
@@ -216,7 +224,6 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
 		coordinates := client.Location
-
 		h.mu.RUnlock()
 
 		if !exists {
@@ -303,6 +310,7 @@ func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNea
 
 		h.mu.RLock()
 		otherClient, exists := h.Clients[userID]
+		coordinates := client.Location
 		h.mu.RUnlock()
 
 		if !exists {
@@ -311,8 +319,8 @@ func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNea
 
 		notification := UserLocationUpdateNotification{
 			UserID:    client.UserID,
-			Latitude:  client.Location.Latitude,
-			Longitude: client.Location.Longitude,
+			Latitude:  coordinates.Latitude,
+			Longitude: coordinates.Longitude,
 		}
 
 		payload, err := json.Marshal(notification)
@@ -488,7 +496,7 @@ func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversati
 		Content:        message,
 	})
 	if err != nil {
-		return fmt.Errorf("failed to marshal message notification: %v", err)
+		return fmt.Errorf("failed to marshal message notification: %w", err)
 	}
 
 	event := Event{
@@ -496,10 +504,5 @@ func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversati
 		Payload: payload,
 	}
 
-	err = wsjson.Write(ctx, otherClient.Conn, event)
-	if err != nil {
-		log.Printf("failed to notify user %s about new message from %s: %v", otherClient.UserID, senderID, err)
-	}
-
-	return err
+	return wsjson.Write(ctx, otherClient.Conn, event)
 }

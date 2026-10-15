@@ -127,20 +127,31 @@ func (r *Repository) AcceptInviteAndCreateMatch(ctx context.Context, inviteID st
 		return "", "", "", err
 	}
 
-	// Lock the users to prevent race conditions
-	_, err = tx.Exec(
+	// Lock the users to prevent race conditions.
+	rows, err := tx.Query(
 		ctx,
 		`
-		SELECT id FROM users
-		WHERE id IN ($1, $2)
-		ORDER BY id
-		FOR UPDATE
-		`,
+    SELECT id FROM users
+    WHERE id IN ($1, $2)
+    ORDER BY id
+    FOR UPDATE
+    `,
 		senderID,
 		receiverID,
 	)
 	if err != nil {
 		return "", "", "", err
+	}
+
+	for rows.Next() {
+		// Iterating through the rows ensures the query results are consumed.
+	}
+
+	rowsErr := rows.Err()
+	rows.Close()
+
+	if rowsErr != nil {
+		return "", "", "", rowsErr
 	}
 
 	var exists bool
@@ -287,17 +298,31 @@ func (r *Repository) RecordMatchResult(ctx context.Context, matchID, userID, mat
 	err = r.DB.QueryRow(
 		ctx,
 		`
-        INSERT INTO match_results (match_id, player_id, result)
-        VALUES ($1, $2, $3)
-        RETURNING (
-            SELECT CASE
-                WHEN player_1_id = $2 THEN player_2_id
-                ELSE player_1_id
-            END
-            FROM matches
-            WHERE id = $1
-        )
-        `,
+		WITH eligible_match AS (
+			SELECT
+				id,
+				player_1_id,
+				player_2_id,
+				CASE
+					WHEN player_1_id = $2 THEN player_2_id
+					ELSE player_1_id
+				END AS other_player_id
+			FROM matches
+			WHERE id = $1
+				AND status = 'finished'
+				AND (player_1_id = $2 OR player_2_id = $2)
+		),
+		inserted_result AS (
+			INSERT INTO match_results (match_id, player_id, result)
+			SELECT id, $2, $3
+			FROM eligible_match
+			RETURNING match_id
+		)
+		SELECT eligible_match.other_player_id
+		FROM eligible_match
+		JOIN inserted_result
+			ON inserted_result.match_id = eligible_match.id
+		`,
 		matchID,
 		userID,
 		matchResult,
@@ -320,10 +345,10 @@ func (r *Repository) RecordMatchResult(ctx context.Context, matchID, userID, mat
 
 func isUniqueViolation(err error) bool {
 	var pgErr *pgconn.PgError
-	if errors.As(err, &pgErr) && pgErr.Code == "23505" {
-		return true
-	}
-	return false
+
+	return errors.As(err, &pgErr) &&
+		pgErr.Code == "23505" &&
+		pgErr.ConstraintName == "match_results_match_id_player_id_key"
 }
 
 type Match struct {
