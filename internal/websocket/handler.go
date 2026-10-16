@@ -61,13 +61,20 @@ func (h *Handler) handleLocationUpdate(ctx context.Context, client *Client, even
 		return
 	}
 
+	if !h.Hub.IsCurrentClient(client) {
+		return
+	}
+
 	err = h.LocationService.UpdateLocation(ctx, client.UserID, coordinates.Latitude, coordinates.Longitude)
 	if err != nil {
 		log.Printf("failed to update location in database: %v", err)
 		return
 	}
 
-	h.Hub.UpdateClientLocation(client, coordinates)
+	if !h.Hub.UpdateClientLocation(client, coordinates) {
+		return
+	}
+
 	h.Hub.UpdateNearbyUsers(ctx, client, 1000)
 
 	log.Printf(

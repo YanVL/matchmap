@@ -169,12 +169,27 @@ func (h *Hub) findNearbyUsersLocked(client *Client, radius float64) []string {
 	return nearbyUserIDs
 }
 
-func (h *Hub) UpdateClientLocation(client *Client, coordinates location.Coordinates) {
+func (h *Hub) UpdateClientLocation(client *Client, coordinates location.Coordinates) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	currentClient, exists := h.Clients[client.UserID]
+	if !exists || currentClient != client {
+		return false
+	}
+
 	client.Location = coordinates
 	client.LocationUpdated = true
+
+	return true
+}
+
+func (h *Hub) IsCurrentClient(client *Client) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	currentClient, exists := h.Clients[client.UserID]
+	return exists && currentClient == client
 }
 
 func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius float64) {
