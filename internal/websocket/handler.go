@@ -106,9 +106,16 @@ func (h *Handler) startHeartbeat(ctx context.Context, cancel context.CancelFunc,
 		for {
 			select {
 			case <-ticker.C:
-				err := client.Conn.Ping(ctx)
+				pingCtx, pingCancel := context.WithTimeout(ctx, 10*time.Second)
+				err := client.Conn.Ping(pingCtx)
+				pingCancel()
+
 				if err != nil {
-					log.Printf("failed to send ping: %v", err)
+					log.Printf(
+						"failed to send ping: user_id=%s error=%v",
+						client.UserID,
+						err,
+					)
 					cancel()
 					return
 				}
