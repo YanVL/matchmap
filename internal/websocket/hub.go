@@ -7,8 +7,6 @@ import (
 	"log"
 	"matchmap/internal/location"
 	"sync"
-
-	"github.com/coder/websocket/wsjson"
 )
 
 type Hub struct {
@@ -28,14 +26,45 @@ func NewHub(ctx context.Context) *Hub {
 
 func (h *Hub) Register(client *Client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+
+	oldClient := h.Clients[client.UserID]
+	var previousNearby []string
+
+	if oldClient != nil && oldClient != client {
+		previousNearby = append([]string(nil), h.Nearby[client.UserID]...)
+	}
 
 	h.Clients[client.UserID] = client
 
-	nearbyUsers := h.findNearbyUsersLocked(client, 1000)
-	h.Nearby[client.UserID] = nearbyUsers
+	if !client.LocationUpdated {
+		h.Nearby[client.UserID] = nil
+	} else {
+		h.Nearby[client.UserID] = h.findNearbyUsersLocked(client, 1000)
+	}
 
-	log.Printf("User %s connected. Nearby users: %v", client.UserID, nearbyUsers)
+	nearbyUsers := append([]string(nil), h.Nearby[client.UserID]...)
+
+	h.mu.Unlock()
+
+	if oldClient != nil && oldClient != client {
+		oldClient.Conn.CloseNow()
+
+		log.Printf(
+			"Previous connection closed: user_id=%s connection=%p",
+			client.UserID,
+			oldClient.Conn,
+		)
+	}
+
+	if oldClient != nil && oldClient != client && !client.LocationUpdated {
+		h.notifyUsersLeft(h.Ctx, client, previousNearby)
+	}
+
+	log.Printf(
+		"User %s connected. Nearby users: %v",
+		client.UserID,
+		nearbyUsers,
+	)
 }
 
 func (h *Hub) Unregister(client *Client) {
@@ -79,7 +108,7 @@ func (h *Hub) Unregister(client *Client) {
 			Payload: payload,
 		}
 
-		err = wsjson.Write(h.Ctx, otherClient.Conn, event)
+		err = otherClient.WriteJSON(h.Ctx, event)
 		if err != nil {
 			log.Printf("failed to notify user %s about %s leaving: %v", nearbyUserID, client.UserID, err)
 		}
@@ -102,7 +131,7 @@ func (h *Hub) Broadcast(ctx context.Context, message Message) {
 
 		log.Printf("sending message to client %s: %+v", client.UserID, message)
 
-		err := wsjson.Write(ctx, client.Conn, message)
+		err := client.WriteJSON(ctx, message)
 		if err != nil {
 			log.Printf("failed to send message to client %s: %v", client.UserID, err)
 		}
@@ -119,8 +148,16 @@ func (h *Hub) FindNearbyUsers(client *Client, radius float64) []string {
 func (h *Hub) findNearbyUsersLocked(client *Client, radius float64) []string {
 	var nearbyUserIDs []string
 
+	if !client.LocationUpdated {
+		return nearbyUserIDs
+	}
+
 	for _, otherClient := range h.Clients {
 		if otherClient.UserID == client.UserID {
+			continue
+		}
+
+		if !otherClient.LocationUpdated {
 			continue
 		}
 
@@ -132,11 +169,27 @@ func (h *Hub) findNearbyUsersLocked(client *Client, radius float64) []string {
 	return nearbyUserIDs
 }
 
-func (h *Hub) UpdateClientLocation(client *Client, coordinates location.Coordinates) {
+func (h *Hub) UpdateClientLocation(client *Client, coordinates location.Coordinates) bool {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
+	currentClient, exists := h.Clients[client.UserID]
+	if !exists || currentClient != client {
+		return false
+	}
+
 	client.Location = coordinates
+	client.LocationUpdated = true
+
+	return true
+}
+
+func (h *Hub) IsCurrentClient(client *Client) bool {
+	h.mu.RLock()
+	defer h.mu.RUnlock()
+
+	currentClient, exists := h.Clients[client.UserID]
+	return exists && currentClient == client
 }
 
 func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius float64) {
@@ -250,7 +303,7 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 			Payload: payload,
 		}
 
-		err = wsjson.Write(ctx, otherClient.Conn, event)
+		err = otherClient.WriteJSON(ctx, event)
 		if err != nil {
 			log.Printf(
 				"failed to notify nearby user %s about %s: %v",
@@ -292,7 +345,7 @@ func (h *Hub) notifyUsersLeft(ctx context.Context, client *Client, noLongerNearb
 			Payload: payload,
 		}
 
-		err = wsjson.Write(ctx, otherClient.Conn, event)
+		err = otherClient.WriteJSON(ctx, event)
 		if err != nil {
 			log.Printf(
 				"failed to notify user %s about %s leaving: %v",
@@ -337,7 +390,7 @@ func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNea
 			Payload: payload,
 		}
 
-		err = wsjson.Write(ctx, otherClient.Conn, event)
+		err = otherClient.WriteJSON(ctx, event)
 		if err != nil {
 			log.Printf(
 				"failed to notify user %s about %s location update: %v",
@@ -372,7 +425,7 @@ func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID s
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMatchAccepted(ctx context.Context, userID, opponentID, matchID string) error {
@@ -399,7 +452,7 @@ func (h *Hub) NotifyMatchAccepted(ctx context.Context, userID, opponentID, match
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) error {
@@ -425,7 +478,7 @@ func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) 
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, matchID string) error {
@@ -450,7 +503,7 @@ func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, match
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matchID, matchResult string) error {
@@ -477,7 +530,7 @@ func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matc
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversationID, senderID, message string) error {
@@ -504,5 +557,5 @@ func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversati
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }

@@ -46,14 +46,32 @@ func (h *Handler) handleLocationUpdate(ctx context.Context, client *Client, even
 		return
 	}
 
-	h.Hub.UpdateClientLocation(client, location.Coordinates{
+	coordinates := location.Coordinates{
 		Latitude:  locationUpdate.Latitude,
 		Longitude: locationUpdate.Longitude,
-	})
+	}
 
-	err = h.LocationService.UpdateLocation(ctx, client.UserID, locationUpdate.Latitude, locationUpdate.Longitude)
+	if !coordinates.IsValid() {
+		log.Printf(
+			"invalid location update: user_id=%s latitude=%f longitude=%f",
+			client.UserID,
+			locationUpdate.Latitude,
+			locationUpdate.Longitude,
+		)
+		return
+	}
+
+	if !h.Hub.IsCurrentClient(client) {
+		return
+	}
+
+	err = h.LocationService.UpdateLocation(ctx, client.UserID, coordinates.Latitude, coordinates.Longitude)
 	if err != nil {
 		log.Printf("failed to update location in database: %v", err)
+		return
+	}
+
+	if !h.Hub.UpdateClientLocation(client, coordinates) {
 		return
 	}
 
@@ -88,9 +106,16 @@ func (h *Handler) startHeartbeat(ctx context.Context, cancel context.CancelFunc,
 		for {
 			select {
 			case <-ticker.C:
-				err := client.Conn.Ping(ctx)
+				pingCtx, pingCancel := context.WithTimeout(ctx, 10*time.Second)
+				err := client.Conn.Ping(pingCtx)
+				pingCancel()
+
 				if err != nil {
-					log.Printf("failed to send ping: %v", err)
+					log.Printf(
+						"failed to send ping: user_id=%s error=%v",
+						client.UserID,
+						err,
+					)
 					cancel()
 					return
 				}
@@ -154,7 +179,7 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 		SentAt:  time.Now(),
 	}
 
-	err = wsjson.Write(ctx, client.Conn, msgWelcome)
+	err = client.WriteJSON(ctx, msgWelcome)
 	if err != nil {
 		log.Printf("failed to send welcome message: %v", err)
 	}
