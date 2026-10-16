@@ -46,17 +46,28 @@ func (h *Handler) handleLocationUpdate(ctx context.Context, client *Client, even
 		return
 	}
 
-	h.Hub.UpdateClientLocation(client, location.Coordinates{
+	coordinates := location.Coordinates{
 		Latitude:  locationUpdate.Latitude,
 		Longitude: locationUpdate.Longitude,
-	})
+	}
 
-	err = h.LocationService.UpdateLocation(ctx, client.UserID, locationUpdate.Latitude, locationUpdate.Longitude)
+	if !coordinates.IsValid() {
+		log.Printf(
+			"invalid location update: user_id=%s latitude=%f longitude=%f",
+			client.UserID,
+			locationUpdate.Latitude,
+			locationUpdate.Longitude,
+		)
+		return
+	}
+
+	err = h.LocationService.UpdateLocation(ctx, client.UserID, coordinates.Latitude, coordinates.Longitude)
 	if err != nil {
 		log.Printf("failed to update location in database: %v", err)
 		return
 	}
 
+	h.Hub.UpdateClientLocation(client, coordinates)
 	h.Hub.UpdateNearbyUsers(ctx, client, 1000)
 
 	log.Printf(

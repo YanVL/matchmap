@@ -6,7 +6,8 @@ import (
 )
 
 type Client struct {
-	UserID   string
-	Conn     *websocket.Conn
-	Location location.Coordinates
+	UserID          string
+	Conn            *websocket.Conn
+	Location        location.Coordinates
+	LocationUpdated bool
 }

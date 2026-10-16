@@ -28,14 +28,43 @@ func NewHub(ctx context.Context) *Hub {
 
 func (h *Hub) Register(client *Client) {
 	h.mu.Lock()
-	defer h.mu.Unlock()
+
+	oldClient := h.Clients[client.UserID]
+	var previousNearby []string
+
+	if oldClient != nil && oldClient != client {
+		previousNearby = append([]string(nil), h.Nearby[client.UserID]...)
+	}
 
 	h.Clients[client.UserID] = client
 
-	nearbyUsers := h.findNearbyUsersLocked(client, 1000)
-	h.Nearby[client.UserID] = nearbyUsers
+	if !client.LocationUpdated {
+		h.Nearby[client.UserID] = nil
+	} else {
+		h.Nearby[client.UserID] = h.findNearbyUsersLocked(client, 1000)
+	}
 
-	log.Printf("User %s connected. Nearby users: %v", client.UserID, nearbyUsers)
+	h.mu.Unlock()
+
+	if oldClient != nil && oldClient != client {
+		oldClient.Conn.CloseNow()
+
+		log.Printf(
+			"Previous connection closed: user_id=%s connection=%p",
+			client.UserID,
+			oldClient.Conn,
+		)
+	}
+
+	if oldClient != nil && oldClient != client {
+		h.notifyUsersLeft(h.Ctx, client, previousNearby)
+	}
+
+	log.Printf(
+		"User %s connected. Nearby users: %v",
+		client.UserID,
+		h.Nearby[client.UserID],
+	)
 }
 
 func (h *Hub) Unregister(client *Client) {
@@ -119,8 +148,16 @@ func (h *Hub) FindNearbyUsers(client *Client, radius float64) []string {
 func (h *Hub) findNearbyUsersLocked(client *Client, radius float64) []string {
 	var nearbyUserIDs []string
 
+	if !client.LocationUpdated {
+		return nearbyUserIDs
+	}
+
 	for _, otherClient := range h.Clients {
 		if otherClient.UserID == client.UserID {
+			continue
+		}
+
+		if !otherClient.LocationUpdated {
 			continue
 		}
 
@@ -137,6 +174,7 @@ func (h *Hub) UpdateClientLocation(client *Client, coordinates location.Coordina
 	defer h.mu.Unlock()
 
 	client.Location = coordinates
+	client.LocationUpdated = true
 }
 
 func (h *Hub) UpdateNearbyUsers(ctx context.Context, client *Client, radius float64) {
