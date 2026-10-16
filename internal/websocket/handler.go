@@ -172,7 +172,7 @@ func (h *Handler) Connect(w http.ResponseWriter, r *http.Request) {
 		SentAt:  time.Now(),
 	}
 
-	err = wsjson.Write(ctx, client.Conn, msgWelcome)
+	err = client.WriteJSON(ctx, msgWelcome)
 	if err != nil {
 		log.Printf("failed to send welcome message: %v", err)
 	}

@@ -7,8 +7,6 @@ import (
 	"log"
 	"matchmap/internal/location"
 	"sync"
-
-	"github.com/coder/websocket/wsjson"
 )
 
 type Hub struct {
@@ -44,6 +42,8 @@ func (h *Hub) Register(client *Client) {
 		h.Nearby[client.UserID] = h.findNearbyUsersLocked(client, 1000)
 	}
 
+	nearbyUsers := append([]string(nil), h.Nearby[client.UserID]...)
+
 	h.mu.Unlock()
 
 	if oldClient != nil && oldClient != client {
@@ -56,14 +56,14 @@ func (h *Hub) Register(client *Client) {
 		)
 	}
 
-	if oldClient != nil && oldClient != client {
+	if oldClient != nil && oldClient != client && !client.LocationUpdated {
 		h.notifyUsersLeft(h.Ctx, client, previousNearby)
 	}
 
 	log.Printf(
 		"User %s connected. Nearby users: %v",
 		client.UserID,
-		h.Nearby[client.UserID],
+		nearbyUsers,
 	)
 }
 
@@ -108,7 +108,7 @@ func (h *Hub) Unregister(client *Client) {
 			Payload: payload,
 		}
 
-		err = wsjson.Write(h.Ctx, otherClient.Conn, event)
+		err = otherClient.WriteJSON(h.Ctx, event)
 		if err != nil {
 			log.Printf("failed to notify user %s about %s leaving: %v", nearbyUserID, client.UserID, err)
 		}
@@ -131,7 +131,7 @@ func (h *Hub) Broadcast(ctx context.Context, message Message) {
 
 		log.Printf("sending message to client %s: %+v", client.UserID, message)
 
-		err := wsjson.Write(ctx, client.Conn, message)
+		err := client.WriteJSON(ctx, message)
 		if err != nil {
 			log.Printf("failed to send message to client %s: %v", client.UserID, err)
 		}
@@ -303,7 +303,7 @@ func (h *Hub) NotifyNearbyUsers(ctx context.Context, client *Client, newNearby [
 			Payload: payload,
 		}
 
-		err = wsjson.Write(ctx, otherClient.Conn, event)
+		err = otherClient.WriteJSON(ctx, event)
 		if err != nil {
 			log.Printf(
 				"failed to notify nearby user %s about %s: %v",
@@ -345,7 +345,7 @@ func (h *Hub) notifyUsersLeft(ctx context.Context, client *Client, noLongerNearb
 			Payload: payload,
 		}
 
-		err = wsjson.Write(ctx, otherClient.Conn, event)
+		err = otherClient.WriteJSON(ctx, event)
 		if err != nil {
 			log.Printf(
 				"failed to notify user %s about %s leaving: %v",
@@ -390,7 +390,7 @@ func (h *Hub) NotifyLocationUpdate(ctx context.Context, client *Client, stillNea
 			Payload: payload,
 		}
 
-		err = wsjson.Write(ctx, otherClient.Conn, event)
+		err = otherClient.WriteJSON(ctx, event)
 		if err != nil {
 			log.Printf(
 				"failed to notify user %s about %s location update: %v",
@@ -425,7 +425,7 @@ func (h *Hub) NotifyInviteCreated(ctx context.Context, userID string, senderID s
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMatchAccepted(ctx context.Context, userID, opponentID, matchID string) error {
@@ -452,7 +452,7 @@ func (h *Hub) NotifyMatchAccepted(ctx context.Context, userID, opponentID, match
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) error {
@@ -478,7 +478,7 @@ func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) 
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, matchID string) error {
@@ -503,7 +503,7 @@ func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, match
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matchID, matchResult string) error {
@@ -530,7 +530,7 @@ func (h *Hub) NotifyMatchResult(ctx context.Context, recipientID, playerID, matc
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
 
 func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversationID, senderID, message string) error {
@@ -557,5 +557,5 @@ func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversati
 		Payload: payload,
 	}
 
-	return wsjson.Write(ctx, otherClient.Conn, event)
+	return otherClient.WriteJSON(ctx, event)
 }
