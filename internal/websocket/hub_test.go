@@ -993,3 +993,307 @@ func TestUpdateClientLocationRejectsUnregisteredClient(t *testing.T) {
 		t.Fatalf("expected 0 registered clients, got %d", hub.ClientCount())
 	}
 }
+
+func TestNotifyNearbyUsersSendsNotification(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	acceptedConns := make(chan *websocket.Conn, 2)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serverConn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Errorf("failed to accept websocket connection: %v", err)
+			return
+		}
+		defer serverConn.CloseNow()
+
+		acceptedConns <- serverConn
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	connect := func(userID string) (*Client, *websocket.Conn) {
+		t.Helper()
+
+		url := "ws" + server.URL[len("http"):]
+
+		clientConn, _, err := websocket.Dial(context.Background(), url, nil)
+		if err != nil {
+			t.Fatalf("failed to dial websocket: %v", err)
+		}
+
+		var serverConn *websocket.Conn
+
+		select {
+		case serverConn = <-acceptedConns:
+		case <-time.After(2 * time.Second):
+			_ = clientConn.CloseNow()
+			t.Fatal("timed out waiting for server-side websocket connection")
+		}
+
+		client := &Client{
+			UserID: userID,
+			Conn:   serverConn,
+		}
+
+		t.Cleanup(func() {
+			_ = clientConn.CloseNow()
+			_ = serverConn.CloseNow()
+		})
+
+		return client, clientConn
+	}
+
+	sender, _ := connect("user-1")
+	recipient, recipientConn := connect("user-2")
+
+	hub.Register(sender)
+	hub.Register(recipient)
+
+	coordinates := location.Coordinates{
+		Latitude:  -10.9472,
+		Longitude: -37.0731,
+	}
+
+	if !hub.UpdateClientLocation(sender, coordinates) {
+		t.Fatal("expected sender's location update to succeed")
+	}
+
+	hub.NotifyNearbyUsers(
+		context.Background(),
+		sender,
+		[]string{recipient.UserID},
+	)
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var event Event
+	if err := wsjson.Read(readCtx, recipientConn, &event); err != nil {
+		t.Fatalf("failed to read nearby_user notification: %v", err)
+	}
+
+	if event.Type != "nearby_user" {
+		t.Fatalf("expected event type %q, got %q", "nearby_user", event.Type)
+	}
+
+	var payload NearbyUserNotification
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("failed to decode nearby_user payload: %v", err)
+	}
+
+	if payload.UserID != sender.UserID {
+		t.Errorf("expected user_id %q, got %q", sender.UserID, payload.UserID)
+	}
+
+	if payload.Latitude != coordinates.Latitude {
+		t.Errorf("expected latitude %v, got %v", coordinates.Latitude, payload.Latitude)
+	}
+
+	if payload.Longitude != coordinates.Longitude {
+		t.Errorf("expected longitude %v, got %v", coordinates.Longitude, payload.Longitude)
+	}
+}
+
+func TestNotifyLocationUpdateSendsNotification(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	acceptedConns := make(chan *websocket.Conn, 2)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serverConn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Errorf("failed to accept websocket connection: %v", err)
+			return
+		}
+		defer serverConn.CloseNow()
+
+		acceptedConns <- serverConn
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	connect := func(userID string) (*Client, *websocket.Conn) {
+		t.Helper()
+
+		url := "ws" + server.URL[len("http"):]
+
+		clientConn, _, err := websocket.Dial(context.Background(), url, nil)
+		if err != nil {
+			t.Fatalf("failed to dial websocket: %v", err)
+		}
+
+		var serverConn *websocket.Conn
+
+		select {
+		case serverConn = <-acceptedConns:
+		case <-time.After(2 * time.Second):
+			_ = clientConn.CloseNow()
+			t.Fatal("timed out waiting for server-side websocket connection")
+		}
+
+		client := &Client{
+			UserID: userID,
+			Conn:   serverConn,
+		}
+
+		t.Cleanup(func() {
+			_ = clientConn.CloseNow()
+			_ = serverConn.CloseNow()
+		})
+
+		return client, clientConn
+	}
+
+	sender, _ := connect("user-1")
+	recipient, recipientConn := connect("user-2")
+
+	hub.Register(sender)
+	hub.Register(recipient)
+
+	coordinates := location.Coordinates{
+		Latitude:  -10.9472,
+		Longitude: -37.0731,
+	}
+
+	if !hub.UpdateClientLocation(sender, coordinates) {
+		t.Fatal("expected sender's location update to succeed")
+	}
+
+	hub.NotifyLocationUpdate(
+		context.Background(),
+		sender,
+		[]string{recipient.UserID},
+	)
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var event Event
+	if err := wsjson.Read(readCtx, recipientConn, &event); err != nil {
+		t.Fatalf("failed to read user_location_update notification: %v", err)
+	}
+
+	if event.Type != "user_location_update" {
+		t.Fatalf(
+			"expected event type %q, got %q",
+			"user_location_update",
+			event.Type,
+		)
+	}
+
+	var payload UserLocationUpdateNotification
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("failed to decode user_location_update payload: %v", err)
+	}
+
+	if payload.UserID != sender.UserID {
+		t.Errorf("expected user_id %q, got %q", sender.UserID, payload.UserID)
+	}
+
+	if payload.Latitude != coordinates.Latitude {
+		t.Errorf("expected latitude %v, got %v", coordinates.Latitude, payload.Latitude)
+	}
+
+	if payload.Longitude != coordinates.Longitude {
+		t.Errorf("expected longitude %v, got %v", coordinates.Longitude, payload.Longitude)
+	}
+}
+
+func TestNotifyInviteCreatedSendsNotification(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	acceptedConns := make(chan *websocket.Conn, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serverConn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Errorf("failed to accept websocket connection: %v", err)
+			return
+		}
+		defer serverConn.CloseNow()
+
+		acceptedConns <- serverConn
+		<-r.Context().Done()
+	}))
+	defer server.Close()
+
+	clientConn, _, err := websocket.Dial(
+		context.Background(),
+		"ws"+server.URL[len("http"):],
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("failed to dial websocket: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = clientConn.CloseNow()
+	})
+
+	var serverConn *websocket.Conn
+
+	select {
+	case serverConn = <-acceptedConns:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for server-side websocket connection")
+	}
+	t.Cleanup(func() {
+		_ = serverConn.CloseNow()
+	})
+
+	recipient := &Client{
+		UserID: "user-2",
+		Conn:   serverConn,
+	}
+	hub.Register(recipient)
+
+	err = hub.NotifyInviteCreated(
+		context.Background(),
+		recipient.UserID,
+		"user-1",
+		"invite-123",
+	)
+	if err != nil {
+		t.Fatalf("expected notification to succeed, got error: %v", err)
+	}
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var event Event
+	if err := wsjson.Read(readCtx, clientConn, &event); err != nil {
+		t.Fatalf("failed to read match_invite notification: %v", err)
+	}
+
+	if event.Type != "match_invite" {
+		t.Fatalf("expected event type %q, got %q", "match_invite", event.Type)
+	}
+
+	var payload MatchInviteNotification
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("failed to decode match_invite payload: %v", err)
+	}
+
+	if payload.SenderID != "user-1" {
+		t.Errorf("expected sender_id %q, got %q", "user-1", payload.SenderID)
+	}
+
+	if payload.InviteID != "invite-123" {
+		t.Errorf("expected invite_id %q, got %q", "invite-123", payload.InviteID)
+	}
+}
+
+func TestNotifyInviteCreatedDoesNothingWhenRecipientIsOffline(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	err := hub.NotifyInviteCreated(
+		context.Background(),
+		"user-offline",
+		"user-1",
+		"invite-123",
+	)
+
+	if err != nil {
+		t.Fatalf("expected nil error for offline recipient, got: %v", err)
+	}
+}
