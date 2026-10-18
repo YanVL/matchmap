@@ -611,3 +611,385 @@ func TestUpdateNearbyUsersNotifiesWhenClientLeaves(t *testing.T) {
 		)
 	}
 }
+
+func TestBroadcastSendsMessageToAllClients(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	acceptedConns := make(chan *websocket.Conn, 2)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Errorf("failed to accept websocket connection: %v", err)
+			return
+		}
+
+		acceptedConns <- conn
+
+		<-r.Context().Done()
+		_ = conn.CloseNow()
+	}))
+	defer server.Close()
+
+	connect := func(userID string) (*Client, *websocket.Conn) {
+		t.Helper()
+
+		url := "ws" + server.URL[len("http"):] + "?user=" + userID
+
+		clientConn, _, err := websocket.Dial(context.Background(), url, nil)
+		if err != nil {
+			t.Fatalf("failed to dial websocket: %v", err)
+		}
+
+		t.Cleanup(func() {
+			_ = clientConn.CloseNow()
+		})
+
+		var serverConn *websocket.Conn
+
+		select {
+		case serverConn = <-acceptedConns:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for server connection")
+		}
+
+		client := &Client{
+			UserID: userID,
+			Conn:   serverConn,
+		}
+
+		return client, clientConn
+	}
+
+	client1, conn1 := connect("user-1")
+	client2, conn2 := connect("user-2")
+
+	hub.Register(client1)
+	hub.Register(client2)
+
+	sentAt := time.Now().UTC().Truncate(time.Second)
+
+	message := Message{
+		User:    "user-1",
+		Content: "Hello, everyone!",
+		SentAt:  sentAt,
+	}
+
+	hub.Broadcast(context.Background(), message)
+
+	connections := map[string]*websocket.Conn{
+		"user-1": conn1,
+		"user-2": conn2,
+	}
+
+	for userID, conn := range connections {
+		t.Run(userID, func(t *testing.T) {
+			ctx, cancel := context.WithTimeout(
+				context.Background(),
+				2*time.Second,
+			)
+			defer cancel()
+
+			var received Message
+
+			err := wsjson.Read(ctx, conn, &received)
+			if err != nil {
+				t.Fatalf("failed to receive broadcast message: %v", err)
+			}
+
+			if received.User != message.User {
+				t.Errorf(
+					"expected User %q, got %q",
+					message.User,
+					received.User,
+				)
+			}
+
+			if received.Content != message.Content {
+				t.Errorf(
+					"expected Content %q, got %q",
+					message.Content,
+					received.Content,
+				)
+			}
+
+			if !received.SentAt.Equal(message.SentAt) {
+				t.Errorf(
+					"expected SentAt %v, got %v",
+					message.SentAt,
+					received.SentAt,
+				)
+			}
+		})
+	}
+}
+
+func TestUnregisterRemovesRegisteredClient(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	client := &Client{
+		UserID: "user-1",
+	}
+
+	hub.Register(client)
+	hub.Unregister(client)
+
+	if hub.ClientCount() != 0 {
+		t.Fatalf("expected 0 registered clients, got %d", hub.ClientCount())
+	}
+
+	if _, exists := hub.Clients[client.UserID]; exists {
+		t.Fatal("client should have been removed from Clients")
+	}
+
+	if _, exists := hub.Nearby[client.UserID]; exists {
+		t.Fatal("client should have been removed from Nearby")
+	}
+}
+
+func TestUnregisterNotifiesNearbyUsers(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	acceptedConns := make(chan *websocket.Conn, 2)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		conn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Errorf("failed to accept websocket connection: %v", err)
+			return
+		}
+
+		acceptedConns <- conn
+
+		<-r.Context().Done()
+		_ = conn.CloseNow()
+	}))
+	defer server.Close()
+
+	connect := func(userID string) (*Client, *websocket.Conn) {
+		t.Helper()
+
+		url := "ws" + server.URL[len("http"):] + "?user=" + userID
+
+		clientConn, _, err := websocket.Dial(context.Background(), url, nil)
+		if err != nil {
+			t.Fatalf("failed to dial websocket: %v", err)
+		}
+
+		t.Cleanup(func() {
+			_ = clientConn.CloseNow()
+		})
+
+		var serverConn *websocket.Conn
+
+		select {
+		case serverConn = <-acceptedConns:
+		case <-time.After(2 * time.Second):
+			t.Fatal("timed out waiting for server connection")
+		}
+
+		return &Client{
+			UserID: userID,
+			Conn:   serverConn,
+		}, clientConn
+	}
+
+	client1, _ := connect("user-1")
+	client2, client2Conn := connect("user-2")
+
+	client1.Location = location.Coordinates{
+		Latitude:  0,
+		Longitude: 0,
+	}
+	client1.LocationUpdated = true
+
+	client2.Location = location.Coordinates{
+		Latitude:  0,
+		Longitude: 0.001,
+	}
+	client2.LocationUpdated = true
+
+	hub.Register(client1)
+	hub.Register(client2)
+
+	hub.UpdateNearbyUsers(context.Background(), client1, 1000)
+
+	hub.Unregister(client1)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	for {
+		var event Event
+
+		err := wsjson.Read(ctx, client2Conn, &event)
+		if err != nil {
+			t.Fatalf("failed to receive user_left event: %v", err)
+		}
+
+		if event.Type != "user_left" {
+			continue
+		}
+
+		var notification UserLeftNotification
+
+		if err := json.Unmarshal(event.Payload, &notification); err != nil {
+			t.Fatalf("failed to decode user_left payload: %v", err)
+		}
+
+		if notification.UserID != client1.UserID {
+			t.Errorf(
+				"expected user_id %q, got %q",
+				client1.UserID,
+				notification.UserID,
+			)
+		}
+
+		break
+	}
+
+	if hub.IsCurrentClient(client1) {
+		t.Error("unregistered client should no longer be current")
+	}
+}
+
+func TestFindNearbyUsersRespectsRadius(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	origin := &Client{
+		UserID: "user-1",
+		Location: location.Coordinates{
+			Latitude:  -10.9472,
+			Longitude: -37.0731,
+		},
+		LocationUpdated: true,
+	}
+
+	nearbyClient := &Client{
+		UserID: "user-2",
+		Location: location.Coordinates{
+			Latitude:  -10.9480,
+			Longitude: -37.0731,
+		},
+		LocationUpdated: true,
+	}
+
+	distantClient := &Client{
+		UserID: "user-3",
+		Location: location.Coordinates{
+			Latitude:  -10.9600,
+			Longitude: -37.0731,
+		},
+		LocationUpdated: true,
+	}
+
+	hub.Register(origin)
+	hub.Register(nearbyClient)
+	hub.Register(distantClient)
+
+	nearbyUsers := hub.FindNearbyUsers(origin, 1000)
+
+	foundNearby := false
+	foundDistant := false
+	foundSelf := false
+
+	for _, userID := range nearbyUsers {
+		switch userID {
+		case nearbyClient.UserID:
+			foundNearby = true
+		case distantClient.UserID:
+			foundDistant = true
+		case origin.UserID:
+			foundSelf = true
+		}
+	}
+
+	if !foundNearby {
+		t.Error("expected nearby client to be included")
+	}
+
+	if foundDistant {
+		t.Error("expected distant client to be excluded")
+	}
+
+	if foundSelf {
+		t.Error("expected the requesting client to be excluded")
+	}
+}
+
+func TestCompareNearbyUsers(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	client := &Client{
+		UserID: "user-1",
+	}
+
+	hub.Nearby[client.UserID] = []string{
+		"user-2",
+		"user-3",
+	}
+
+	updatedNearby := []string{
+		"user-3",
+		"user-4",
+	}
+
+	newNearby, noLongerNearby, stillNearby := hub.CompareNearbyUsers(
+		client,
+		updatedNearby,
+	)
+
+	assertUserIDs := func(name string, got, want []string) {
+		t.Helper()
+
+		if len(got) != len(want) {
+			t.Fatalf("%s: expected %v, got %v", name, want, got)
+		}
+
+		gotSet := make(map[string]bool)
+		for _, userID := range got {
+			gotSet[userID] = true
+		}
+
+		for _, userID := range want {
+			if !gotSet[userID] {
+				t.Errorf("%s: expected user %q in %v", name, userID, got)
+			}
+		}
+	}
+
+	assertUserIDs("newNearby", newNearby, []string{"user-4"})
+	assertUserIDs("noLongerNearby", noLongerNearby, []string{"user-2"})
+	assertUserIDs("stillNearby", stillNearby, []string{"user-3"})
+}
+
+func TestUpdateClientLocationRejectsUnregisteredClient(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	client := &Client{
+		UserID: "user-1",
+	}
+
+	coordinates := location.Coordinates{
+		Latitude:  -10.9472,
+		Longitude: -37.0731,
+	}
+
+	updated := hub.UpdateClientLocation(client, coordinates)
+
+	if updated {
+		t.Fatal("expected location update for unregistered client to be rejected")
+	}
+
+	if client.LocationUpdated {
+		t.Fatal("unregistered client's location should not be marked as updated")
+	}
+
+	if client.Location != (location.Coordinates{}) {
+		t.Fatalf("expected location to remain unchanged, got %v", client.Location)
+	}
+
+	if hub.ClientCount() != 0 {
+		t.Fatalf("expected 0 registered clients, got %d", hub.ClientCount())
+	}
+}
