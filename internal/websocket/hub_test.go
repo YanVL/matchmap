@@ -1203,51 +1203,9 @@ func TestNotifyLocationUpdateSendsNotification(t *testing.T) {
 func TestNotifyInviteCreatedSendsNotification(t *testing.T) {
 	hub := NewHub(context.Background())
 
-	acceptedConns := make(chan *websocket.Conn, 1)
+	recipient, clientConn := setupNotificationTest(t, hub, "user-2")
 
-	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		serverConn, err := websocket.Accept(w, r, nil)
-		if err != nil {
-			t.Errorf("failed to accept websocket connection: %v", err)
-			return
-		}
-		defer serverConn.CloseNow()
-
-		acceptedConns <- serverConn
-		<-r.Context().Done()
-	}))
-	defer server.Close()
-
-	clientConn, _, err := websocket.Dial(
-		context.Background(),
-		"ws"+server.URL[len("http"):],
-		nil,
-	)
-	if err != nil {
-		t.Fatalf("failed to dial websocket: %v", err)
-	}
-	t.Cleanup(func() {
-		_ = clientConn.CloseNow()
-	})
-
-	var serverConn *websocket.Conn
-
-	select {
-	case serverConn = <-acceptedConns:
-	case <-time.After(2 * time.Second):
-		t.Fatal("timed out waiting for server-side websocket connection")
-	}
-	t.Cleanup(func() {
-		_ = serverConn.CloseNow()
-	})
-
-	recipient := &Client{
-		UserID: "user-2",
-		Conn:   serverConn,
-	}
-	hub.Register(recipient)
-
-	err = hub.NotifyInviteCreated(
+	err := hub.NotifyInviteCreated(
 		context.Background(),
 		recipient.UserID,
 		"user-1",
@@ -1293,6 +1251,218 @@ func TestNotifyInviteCreatedDoesNothingWhenRecipientIsOffline(t *testing.T) {
 		"invite-123",
 	)
 
+	if err != nil {
+		t.Fatalf("expected nil error for offline recipient, got: %v", err)
+	}
+}
+
+func setupNotificationTest(t *testing.T, hub *Hub, userID string) (*Client, *websocket.Conn) {
+	t.Helper()
+
+	acceptedConns := make(chan *websocket.Conn, 1)
+
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		serverConn, err := websocket.Accept(w, r, nil)
+		if err != nil {
+			t.Errorf("failed to accept websocket connection: %v", err)
+			return
+		}
+		defer serverConn.CloseNow()
+
+		acceptedConns <- serverConn
+		<-r.Context().Done()
+	}))
+	t.Cleanup(server.Close)
+
+	clientConn, _, err := websocket.Dial(
+		context.Background(),
+		"ws"+server.URL[len("http"):],
+		nil,
+	)
+	if err != nil {
+		t.Fatalf("failed to dial websocket: %v", err)
+	}
+	t.Cleanup(func() {
+		_ = clientConn.CloseNow()
+	})
+
+	var serverConn *websocket.Conn
+	select {
+	case serverConn = <-acceptedConns:
+	case <-time.After(2 * time.Second):
+		t.Fatal("timed out waiting for server-side websocket connection")
+	}
+	t.Cleanup(func() {
+		_ = serverConn.CloseNow()
+	})
+
+	client := &Client{
+		UserID: userID,
+		Conn:   serverConn,
+	}
+	hub.Register(client)
+
+	return client, clientConn
+}
+
+func TestNotifyMatchRejectedSendsNotification(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	recipient, clientConn := setupNotificationTest(t, hub, "user-1")
+
+	err := hub.NotifyMatchRejected(
+		context.Background(),
+		recipient.UserID,
+		"invite-123",
+	)
+	if err != nil {
+		t.Fatalf("expected notification to succeed, got error: %v", err)
+	}
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var event Event
+	if err := wsjson.Read(readCtx, clientConn, &event); err != nil {
+		t.Fatalf("failed to read match_rejected notification: %v", err)
+	}
+
+	if event.Type != "match_rejected" {
+		t.Fatalf("expected event type %q, got %q", "match_rejected", event.Type)
+	}
+
+	var payload MatchRejectedNotification
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("failed to decode match_rejected payload: %v", err)
+	}
+
+	if payload.UserID != "user-1" {
+		t.Errorf("expected user_id %q, got %q", "user-1", payload.UserID)
+	}
+
+	if payload.InviteID != "invite-123" {
+		t.Errorf("expected invite_id %q, got %q", "invite-123", payload.InviteID)
+	}
+}
+
+func TestNotifyMatchRejectedDoesNothingWhenRecipientIsOffline(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	err := hub.NotifyMatchRejected(
+		context.Background(),
+		"user-offline",
+		"invite-123",
+	)
+	if err != nil {
+		t.Fatalf("expected nil error for offline recipient, got: %v", err)
+	}
+}
+
+func TestNotifyMatchFinishedSendsNotification(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	recipient, clientConn := setupNotificationTest(t, hub, "user-1")
+
+	err := hub.NotifyMatchFinished(
+		context.Background(),
+		recipient.UserID,
+		"match-123",
+	)
+	if err != nil {
+		t.Fatalf("expected notification to succeed, got error: %v", err)
+	}
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var event Event
+	if err := wsjson.Read(readCtx, clientConn, &event); err != nil {
+		t.Fatalf("failed to read match_finished notification: %v", err)
+	}
+
+	if event.Type != "match_finished" {
+		t.Fatalf("expected event type %q, got %q", "match_finished", event.Type)
+	}
+
+	var payload MatchFinishedNotification
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("failed to decode match_finished payload: %v", err)
+	}
+
+	if payload.MatchID != "match-123" {
+		t.Errorf("expected match_id %q, got %q", "match-123", payload.MatchID)
+	}
+}
+
+func TestNotifyMatchFinishedDoesNothingWhenRecipientIsOffline(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	err := hub.NotifyMatchFinished(
+		context.Background(),
+		"user-offline",
+		"match-123",
+	)
+	if err != nil {
+		t.Fatalf("expected nil error for offline recipient, got: %v", err)
+	}
+}
+
+func TestNotifyMatchResultSendsNotification(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	recipient, clientConn := setupNotificationTest(t, hub, "user-1")
+
+	err := hub.NotifyMatchResult(
+		context.Background(),
+		recipient.UserID,
+		"user-2",
+		"match-123",
+		"win",
+	)
+	if err != nil {
+		t.Fatalf("expected notification to succeed, got error: %v", err)
+	}
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var event Event
+	if err := wsjson.Read(readCtx, clientConn, &event); err != nil {
+		t.Fatalf("failed to read match_result notification: %v", err)
+	}
+
+	if event.Type != "match_result" {
+		t.Fatalf("expected event type %q, got %q", "match_result", event.Type)
+	}
+
+	var payload MatchResultNotification
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("failed to decode match_result payload: %v", err)
+	}
+
+	if payload.MatchID != "match-123" {
+		t.Errorf("expected match_id %q, got %q", "match-123", payload.MatchID)
+	}
+
+	if payload.PlayerID != "user-2" {
+		t.Errorf("expected player_id %q, got %q", "user-2", payload.PlayerID)
+	}
+
+	if payload.MatchResult != "win" {
+		t.Errorf("expected match_result %q, got %q", "win", payload.MatchResult)
+	}
+}
+
+func TestNotifyMatchResultDoesNothingWhenRecipientIsOffline(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	err := hub.NotifyMatchResult(
+		context.Background(),
+		"user-offline",
+		"user-2",
+		"match-123",
+		"win",
+	)
 	if err != nil {
 		t.Fatalf("expected nil error for offline recipient, got: %v", err)
 	}

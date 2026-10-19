@@ -481,7 +481,7 @@ func (h *Hub) NotifyMatchRejected(ctx context.Context, userID, inviteID string) 
 	return otherClient.WriteJSON(ctx, event)
 }
 
-func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, opponentID, matchID string) error {
+func (h *Hub) NotifyMatchFinished(ctx context.Context, userID, matchID string) error {
 
 	h.mu.RLock()
 	otherClient, exists := h.Clients[userID]
