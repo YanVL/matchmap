@@ -17,7 +17,7 @@ services:
     build: .
     container_name: matchmap-api
     ports:
-      - "${APP_PORT}:8080"
+      - "127.0.0.1:${APP_PORT}:8080"
     env_file:
       - .env
     environment:
@@ -32,7 +32,7 @@ services:
     image: postgis/postgis:17-3.5
     container_name: matchmap-db
     ports:
-      - "${DB_PORT}:5432"
+      - "127.0.0.1:${DB_PORT}:5432"
     env_file:
       - .env
     volumes:

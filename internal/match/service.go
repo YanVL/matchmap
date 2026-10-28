@@ -104,11 +104,11 @@ func (s *Service) FinishMatch(ctx context.Context, matchID, userID string) error
 	}
 
 	if bothFinished {
-		if err := s.Notifier.NotifyMatchFinished(ctx, userID, otherPlayerID, matchID); err != nil {
+		if err := s.Notifier.NotifyMatchFinished(ctx, userID, matchID); err != nil {
 			log.Printf("failed to notify match finished: %v", err)
 		}
 
-		if err := s.Notifier.NotifyMatchFinished(ctx, otherPlayerID, userID, matchID); err != nil {
+		if err := s.Notifier.NotifyMatchFinished(ctx, otherPlayerID, matchID); err != nil {
 			log.Printf("failed to notify match finished: %v", err)
 		}
 	}
