@@ -9,6 +9,11 @@ import (
 	"github.com/jackc/pgx/v5/pgxpool"
 )
 
+type fakeNotifier struct {
+	finishedNotifications []string
+	finishedErr           error
+}
+
 func TestIsConcordant(t *testing.T) {
 	tests := []struct {
 		name     string
@@ -1815,6 +1820,228 @@ func TestGetPendingInvites(t *testing.T) {
 			"expected status %q, got %q",
 			"pending",
 			invite.Status,
+		)
+	}
+}
+
+func (f *fakeNotifier) NotifyInviteCreated(
+	ctx context.Context,
+	userID string,
+	senderID string,
+	inviteID string,
+) error {
+	return nil
+}
+
+func (f *fakeNotifier) NotifyMatchAccepted(
+	ctx context.Context,
+	userID, opponentID, matchID string,
+) error {
+	return nil
+}
+
+func (f *fakeNotifier) NotifyMatchRejected(
+	ctx context.Context,
+	userID, inviteID string,
+) error {
+	return nil
+}
+
+func (f *fakeNotifier) NotifyMatchFinished(
+	ctx context.Context,
+	userID, matchID string,
+) error {
+	f.finishedNotifications = append(
+		f.finishedNotifications,
+		userID,
+	)
+
+	return f.finishedErr
+}
+
+func (f *fakeNotifier) NotifyMatchResult(
+	ctx context.Context,
+	recipientID, playerID, matchID, matchResult string,
+) error {
+	return nil
+}
+
+func setupFinishMatchServiceTest(t *testing.T) (
+	*Service,
+	*fakeNotifier,
+	string,
+	string,
+	string,
+) {
+	t.Helper()
+
+	ctx := context.Background()
+
+	db, err := pgxpool.New(
+		ctx,
+		"postgres://matchmap:matchmap@localhost:5432/matchmap?sslmode=disable",
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	player1ID := "12121212-aaaa-aaaa-aaaa-121212121212"
+	player2ID := "13131313-bbbb-bbbb-bbbb-131313131313"
+	matchID := "14141414-cccc-cccc-cccc-141414141414"
+
+	cleanup := func() {
+		_, err := db.Exec(
+			ctx,
+			`DELETE FROM match_results WHERE match_id = $1`,
+			matchID,
+		)
+		if err != nil {
+			t.Errorf("failed to clean match results: %v", err)
+		}
+
+		_, err = db.Exec(
+			ctx,
+			`DELETE FROM matches WHERE id = $1`,
+			matchID,
+		)
+		if err != nil {
+			t.Errorf("failed to clean match: %v", err)
+		}
+
+		_, err = db.Exec(
+			ctx,
+			`DELETE FROM users WHERE id IN ($1, $2)`,
+			player1ID,
+			player2ID,
+		)
+		if err != nil {
+			t.Errorf("failed to clean users: %v", err)
+		}
+	}
+
+	cleanup()
+
+	t.Cleanup(func() {
+		cleanup()
+		db.Close()
+	})
+
+	_, err = db.Exec(
+		ctx,
+		`
+		INSERT INTO users (id, name)
+		VALUES
+			($1, 'Player 1'),
+			($2, 'Player 2')
+		`,
+		player1ID,
+		player2ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	_, err = db.Exec(
+		ctx,
+		`
+		INSERT INTO matches (id, player_1_id, player_2_id, status)
+		VALUES ($1, $2, $3, 'active')
+		`,
+		matchID,
+		player1ID,
+		player2ID,
+	)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	notifier := &fakeNotifier{}
+
+	service := &Service{
+		Repository: &Repository{DB: db},
+		Notifier:   notifier,
+	}
+
+	return service, notifier, matchID, player1ID, player2ID
+}
+
+func TestFinishMatch_FirstPlayerDoesNotNotify(t *testing.T) {
+	service, notifier, matchID, player1ID, _ :=
+		setupFinishMatchServiceTest(t)
+
+	err := service.FinishMatch(
+		context.Background(),
+		matchID,
+		player1ID,
+	)
+	if err != nil {
+		t.Fatalf("expected finish to succeed, got: %v", err)
+	}
+
+	if len(notifier.finishedNotifications) != 0 {
+		t.Errorf(
+			"expected no notifications, got %v",
+			notifier.finishedNotifications,
+		)
+	}
+}
+
+func TestFinishMatch_SecondPlayerNotifiesBothPlayers(t *testing.T) {
+	service, notifier, matchID, player1ID, player2ID :=
+		setupFinishMatchServiceTest(t)
+
+	ctx := context.Background()
+
+	if err := service.FinishMatch(ctx, matchID, player1ID); err != nil {
+		t.Fatalf("first player failed to finish: %v", err)
+	}
+
+	if err := service.FinishMatch(ctx, matchID, player2ID); err != nil {
+		t.Fatalf("second player failed to finish: %v", err)
+	}
+
+	if len(notifier.finishedNotifications) != 2 {
+		t.Fatalf(
+			"expected 2 notifications, got %d",
+			len(notifier.finishedNotifications),
+		)
+	}
+
+	notifications := map[string]int{}
+	for _, userID := range notifier.finishedNotifications {
+		notifications[userID]++
+	}
+
+	if notifications[player1ID] != 1 {
+		t.Errorf("expected one notification for player 1, got %d", notifications[player1ID])
+	}
+
+	if notifications[player2ID] != 1 {
+		t.Errorf("expected one notification for player 2, got %d", notifications[player2ID])
+	}
+}
+
+func TestFinishMatch_NotificationErrorDoesNotFailOperation(t *testing.T) {
+	service, notifier, matchID, player1ID, player2ID :=
+		setupFinishMatchServiceTest(t)
+
+	notifier.finishedErr = errors.New("notification failed")
+
+	ctx := context.Background()
+
+	if err := service.FinishMatch(ctx, matchID, player1ID); err != nil {
+		t.Fatalf("first player failed to finish: %v", err)
+	}
+
+	err := service.FinishMatch(ctx, matchID, player2ID)
+	if err != nil {
+		t.Fatalf("expected nil despite notification failure, got: %v", err)
+	}
+
+	if len(notifier.finishedNotifications) != 2 {
+		t.Errorf(
+			"expected 2 notification attempts, got %d",
+			len(notifier.finishedNotifications),
 		)
 	}
 }

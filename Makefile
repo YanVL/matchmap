@@ -1,4 +1,4 @@
-.PHONY: dev down migrate-up migrate-force seed test test-race test-all test-race-all format
+.PHONY: dev down migrate-up migrate-force seed test test-race test-all test-race-all format vet
 
 dev:
 	docker compose -f docker-compose.yml -f docker-compose.dev.yml up --build
@@ -29,3 +29,6 @@ test-race-all:
 
 format:
 	go fmt ./...
+
+vet:
+	go vet ./...
