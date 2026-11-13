@@ -9,12 +9,33 @@ import (
 
 	"github.com/coder/websocket"
 	"github.com/coder/websocket/wsjson"
+	"matchmap/internal/chat"
 	"matchmap/internal/location"
 )
 
 type Handler struct {
 	Hub             *Hub
 	LocationService *location.Service
+	ChatService     *chat.Service
+}
+
+type TypingEvent struct {
+	ConversationID string `json:"conversation_id"`
+}
+
+func (h *Handler) handleTyping(ctx context.Context, client *Client, event Event) {
+	var typing TypingEvent
+	if err := json.Unmarshal(event.Payload, &typing); err != nil {
+		log.Printf("failed to unmarshal typing event: %v", err)
+		return
+	}
+	if h.ChatService == nil {
+		log.Printf("chat service is not configured for typing events")
+		return
+	}
+	if err := h.ChatService.NotifyUserIsTyping(ctx, typing.ConversationID, client.UserID); err != nil {
+		log.Printf("failed to notify typing status: %v", err)
+	}
 }
 
 // Handle chat message events
@@ -92,6 +113,8 @@ func (h *Handler) dispatchEvent(ctx context.Context, client *Client, event Event
 		h.handleChatMessage(ctx, client, event)
 	case "location_update":
 		h.handleLocationUpdate(ctx, client, event)
+	case "is_typing":
+		h.handleTyping(ctx, client, event)
 	default:
 		log.Printf("unknown event type: %s", event.Type)
 	}

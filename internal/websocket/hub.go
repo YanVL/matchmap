@@ -559,3 +559,22 @@ func (h *Hub) NotifyMessageReceived(ctx context.Context, recipientID, conversati
 
 	return otherClient.WriteJSON(ctx, event)
 }
+
+func (h *Hub) NotifyUserIsTyping(ctx context.Context, recipientID, conversationID, senderID string) error {
+	h.mu.RLock()
+	client, exists := h.Clients[recipientID]
+	h.mu.RUnlock()
+	if !exists {
+		return nil
+	}
+
+	payload, err := json.Marshal(TypingNotification{
+		ConversationID: conversationID,
+		SenderID:       senderID,
+		IsTyping:       true,
+	})
+	if err != nil {
+		return fmt.Errorf("failed to marshal typing notification: %w", err)
+	}
+	return client.WriteJSON(ctx, Event{Type: "user_is_typing", Payload: payload})
+}
