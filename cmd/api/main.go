@@ -61,6 +61,7 @@ func main() {
 		Repository: &chatRepo,
 		Notifier:   hub,
 	}
+	wsHandler.ChatService = &chatService
 	chatHandler := chat.Handler{
 		Service: &chatService,
 	}

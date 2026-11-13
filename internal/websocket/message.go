@@ -19,3 +19,9 @@ type PrivateMessageNotification struct {
 	SenderID       string `json:"sender_id"`
 	Content        string `json:"content"`
 }
+
+type TypingNotification struct {
+	ConversationID string `json:"conversation_id"`
+	SenderID       string `json:"sender_id"`
+	IsTyping       bool   `json:"is_typing"`
+}

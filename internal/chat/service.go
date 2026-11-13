@@ -153,6 +153,44 @@ func (s *Service) GetConversationHistoryByID(ctx context.Context, conversationID
 	return s.Repository.GetMessagesByConversationID(ctx, conversationID)
 }
 
+// NotifyUserIsTyping validates the sender and notifies the other participant.
+func (s *Service) NotifyUserIsTyping(ctx context.Context, conversationID, senderID string) error {
+	if conversationID == "" || senderID == "" {
+		return ErrMessageIDsRequired
+	}
+	if err := validateUUIDs(conversationID, senderID); err != nil {
+		return err
+	}
+
+	user1ID, user2ID, err := s.Repository.GetConversationByID(ctx, conversationID)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return ErrConversationDoesNotExist
+		}
+		return err
+	}
+	if senderID != user1ID && senderID != user2ID {
+		return ErrUserNotInConversation
+	}
+
+	hasActiveMatch, err := s.Repository.HasActiveMatch(ctx, user1ID, user2ID)
+	if err != nil {
+		return err
+	}
+	if !hasActiveMatch {
+		return ErrNoActiveMatch
+	}
+
+	recipientID := user1ID
+	if senderID == user1ID {
+		recipientID = user2ID
+	}
+	if s.Notifier == nil {
+		return nil
+	}
+	return s.Notifier.NotifyUserIsTyping(ctx, recipientID, conversationID, senderID)
+}
+
 func validateUUIDs(ids ...string) error {
 	for _, id := range ids {
 		if _, err := uuid.Parse(id); err != nil {
