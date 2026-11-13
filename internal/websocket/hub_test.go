@@ -1467,3 +1467,176 @@ func TestNotifyMatchResultDoesNothingWhenRecipientIsOffline(t *testing.T) {
 		t.Fatalf("expected nil error for offline recipient, got: %v", err)
 	}
 }
+
+func TestNotifyMatchAcceptedSendsNotification(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	recipient, clientConn := setupNotificationTest(t, hub, "user-1")
+
+	err := hub.NotifyMatchAccepted(
+		context.Background(),
+		recipient.UserID,
+		"user-2",
+		"match-123",
+	)
+	if err != nil {
+		t.Fatalf("expected notification to succeed, got error: %v", err)
+	}
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var event Event
+	if err := wsjson.Read(readCtx, clientConn, &event); err != nil {
+		t.Fatalf("failed to read match_accepted notification: %v", err)
+	}
+
+	if event.Type != "match_accepted" {
+		t.Fatalf("expected event type %q, got %q", "match_accepted", event.Type)
+	}
+
+	var payload MatchAcceptedNotification
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("failed to decode match_accepted payload: %v", err)
+	}
+
+	if payload.MatchID != "match-123" {
+		t.Errorf("expected match_id %q, got %q", "match-123", payload.MatchID)
+	}
+
+	if payload.PlayerID != "user-1" {
+		t.Errorf("expected player_id %q, got %q", "user-1", payload.PlayerID)
+	}
+
+	if payload.OpponentID != "user-2" {
+		t.Errorf("expected opponent_id %q, got %q", "user-2", payload.OpponentID)
+	}
+}
+
+func TestNotifyMatchAcceptedDoesNothingWhenRecipientIsOffline(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	err := hub.NotifyMatchAccepted(
+		context.Background(),
+		"user-offline",
+		"user-2",
+		"match-123",
+	)
+	if err != nil {
+		t.Fatalf("expected nil error for offline recipient, got: %v", err)
+	}
+}
+
+func TestNotifyMessageReceivedSendsNotification(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	_, clientConn := setupNotificationTest(t, hub, "user-2")
+
+	err := hub.NotifyMessageReceived(
+		context.Background(),
+		"user-2",
+		"conversation-123",
+		"user-1",
+		"Hello, world!",
+	)
+	if err != nil {
+		t.Fatalf("expected notification to succeed, got error: %v", err)
+	}
+
+	readCtx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	var event Event
+	if err := wsjson.Read(readCtx, clientConn, &event); err != nil {
+		t.Fatalf("failed to read message_received notification: %v", err)
+	}
+
+	if event.Type != "message_received" {
+		t.Fatalf("expected event type %q, got %q", "message_received", event.Type)
+	}
+
+	var payload PrivateMessageNotification
+	if err := json.Unmarshal(event.Payload, &payload); err != nil {
+		t.Fatalf("failed to decode message_received payload: %v", err)
+	}
+
+	if payload.ConversationID != "conversation-123" {
+		t.Errorf(
+			"expected conversation_id %q, got %q",
+			"conversation-123",
+			payload.ConversationID,
+		)
+	}
+
+	if payload.SenderID != "user-1" {
+		t.Errorf("expected sender_id %q, got %q", "user-1", payload.SenderID)
+	}
+
+	if payload.Content != "Hello, world!" {
+		t.Errorf("expected content %q, got %q", "Hello, world!", payload.Content)
+	}
+}
+
+func TestNotifyMessageReceivedDoesNothingWhenRecipientIsOffline(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	err := hub.NotifyMessageReceived(
+		context.Background(),
+		"user-offline",
+		"conversation-123",
+		"user-1",
+		"Hello, world!",
+	)
+	if err != nil {
+		t.Fatalf("expected nil error for offline recipient, got: %v", err)
+	}
+}
+
+func TestNotifyMatchAcceptedReturnsErrorWhenConnectionIsClosed(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	recipient, _ := setupNotificationTest(t, hub, "user-1")
+
+	if err := recipient.Conn.CloseNow(); err != nil {
+		t.Fatalf("failed to close connection: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := hub.NotifyMatchAccepted(
+		ctx,
+		recipient.UserID,
+		"user-2",
+		"match-123",
+	)
+
+	if err == nil {
+		t.Fatal("expected an error when writing to a closed connection")
+	}
+}
+
+func TestNotifyMessageReceivedReturnsErrorWhenConnectionIsClosed(t *testing.T) {
+	hub := NewHub(context.Background())
+
+	recipient, _ := setupNotificationTest(t, hub, "user-2")
+
+	if err := recipient.Conn.CloseNow(); err != nil {
+		t.Fatalf("failed to close connection: %v", err)
+	}
+
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+	defer cancel()
+
+	err := hub.NotifyMessageReceived(
+		ctx,
+		recipient.UserID,
+		"conversation-123",
+		"user-1",
+		"Hello, world!",
+	)
+
+	if err == nil {
+		t.Fatal("expected an error when writing to a closed connection")
+	}
+}
